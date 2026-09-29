@@ -3,7 +3,7 @@
      rel=canonical back to the root; /index.html 301s here. Neither is listed. -->
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>https://freecad.virtastic.app/</loc>
+    <loc>https://cad.spatterson.ca/</loc>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>

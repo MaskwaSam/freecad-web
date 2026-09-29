@@ -1,36 +1,41 @@
-# freecad-web
+# FreeCAD for class
+
+Classroom edition hosted at **[cad.spatterson.ca](https://cad.spatterson.ca/)**.
+This fork is based on browser release **v1.0.5**, using **FreeCAD 1.1.3**.
+The loading screen, browser warning and error messages direct students to their
+teacher; promotional branding and outbound community/donation links have been
+removed from those pages. Copyright, license and corresponding-source notices
+are retained in the local attribution page and repository.
+
+The changes are in `play-gui/freecad-gui.html`, `play-gui/legal.html`,
+`play-gui/robots.txt` and `play-gui/sitemap.xml`. Engine build inputs and asset
+placeholders are unchanged. The setup commands and prebuilt images described
+below are upstream instructions: they do **not** include this fork's classroom
+changes. The hosted classroom site applies these page changes over the v1.0.5
+engine image.
+
+## Upstream application
 
 **[FreeCAD](https://www.freecad.org) 1.1.3, compiled to WebAssembly and running in the browser.**
 No install, no plugin, no server-side rendering. The real application, executing locally in
 your tab.
 
-👉 **<https://freecad.virtastic.app>**
-
-[![Join us on Discord](https://img.shields.io/badge/Discord-join%20the%20community-5865F2?logo=discord&logoColor=white)](https://discord.gg/PzFfDkbSue)
-&nbsp;Questions, bugs, feature requests, or just want to show what you built? **[Come talk to us on Discord.](https://discord.gg/PzFfDkbSue)**
-
-[![Support on Patreon](https://img.shields.io/badge/Patreon-support-F96854?logo=patreon&logoColor=white)](https://www.patreon.com/virtastic)
-[![Support on Ko-fi](https://img.shields.io/badge/Ko--fi-buy%20us%20a%20coffee-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/virtastic)
-[![YouTube](https://img.shields.io/badge/YouTube-Virtastic-FF0000?logo=youtube&logoColor=white)](https://www.youtube.com/@Virtastic-Apps)
-[![Reddit](https://img.shields.io/badge/Reddit-r%2Fvirtastic-FF4500?logo=reddit&logoColor=white)](https://www.reddit.com/r/virtastic)
-
-[![A 42 MB 3D printer assembly open in freecad-web](docs/images/project-42mb.png)](https://freecad.virtastic.app)
+[![A 42 MB 3D printer assembly open in freecad-web](docs/images/project-42mb.png)](https://cad.spatterson.ca/)
 
 <sub>A real 42 MB project, 34 top-level parts, opened from the browser: GA3Dtech's open-hardware
-[GA3D-basicbot-2023](https://github.com/GA3Dtech/GA3D-basicbot-2023) (CERN-OHL-W-2.0). Every
-screenshot on this page is the application running, captured from the shipped build.</sub>
+[GA3D-basicbot-2023](https://github.com/GA3Dtech/GA3D-basicbot-2023) (CERN-OHL-W-2.0). The screenshots below were captured by the upstream project from its shipped build.</sub>
 
 This is not a viewer or a cut-down demo. It is upstream FreeCAD built for
 `wasm64-emscripten` with wasm exceptions and JSPI: the same workbenches, the same commands,
 the same OCCT geometry kernel, the same CPython interpreter running the same Python
 workbenches, and the same solvers.
 
-> Not affiliated with or endorsed by the FreeCAD project. Please report problems here,
-> not to FreeCAD upstream.
+> Not affiliated with or endorsed by the FreeCAD project. Students should ask their
+> teacher for help with the classroom site.
 
 ## What it looks like
 
-Every one of these opened in the browser, from the build that is live right now.
+These upstream examples show projects opened in the browser.
 
 | | |
 |---|---|
@@ -223,22 +228,12 @@ gitignored. What this repository holds is everything needed to *recreate* them: 
 in [patches/](patches/), the configure and build scripts, the link commands, the front-end
 shell in [play-gui/](play-gui/), and the verification harnesses in `scratchpad/`.
 
-## Community
+## Classroom help and attribution
 
-- **Discord:** <https://discord.gg/PzFfDkbSue>. The fastest way to get help, report something odd, or
-  see what is coming next.
-- **Bugs and feature requests:** [GitHub issues](https://github.com/Virtastic/freecad-web/issues).
-- **YouTube:** [Virtastic](https://www.youtube.com/@Virtastic-Apps), with demos and walkthroughs.
-- **Reddit:** [r/virtastic](https://www.reddit.com/r/virtastic).
-- **LinkedIn:** [Virtastic](https://www.linkedin.com/company/virtastic).
-- **More from Virtastic:** other desktop software running in the browser, at <https://virtastic.app>.
-
-## Support the project
-
-freecad-web is built and hosted by [Virtastic](https://virtastic.app). If it is useful to you,
-you can support us on [Ko-fi](https://ko-fi.com/virtastic) or
-[Patreon](https://www.patreon.com/virtastic). It pays for the servers and the development time.
-Nothing is behind a paywall: every workbench is free to everyone, and no tier buys a feature.
+Students should ask their teacher for help. This fork adapts the browser port
+created by Virtastic; the original copyright and component notices remain in
+[NOTICE](NOTICE). Corresponding source information is in
+[the attribution page](play-gui/legal.html).
 
 ## License
 
