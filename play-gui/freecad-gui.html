@@ -87,105 +87,93 @@ document.addEventListener('DOMContentLoaded', function () {
  #logtoggle{position:absolute;right:6px;bottom:6px;z-index:11;background:#1e1e2e;color:#8087a2;
       border:1px solid #45475a;border-radius:4px;padding:1px 7px;font:11px ui-monospace,Menlo,monospace;cursor:pointer;opacity:.45}
  #logtoggle:hover{opacity:1}
- /* Classroom loading overlay. */
- :root{
-   --ash:#0a0a09; --panel:#14100c; --panel-2:#1c1712; --line:#3a2f22;
-   --ink:#ece2c8; --muted:#a2977c; --faint:#786c58;
-   --bronze:#8a7a4e; --bronze-hi:#c7b070; --gold:#c9a54a; --gold-hi:#eccf7e;
-   --ember:#8b1a1a; --err:#e0836a; --ok:#a9c48a;
- }
- #load{position:fixed; inset:0; z-index:20; display:flex; align-items:center; justify-content:center;
-   padding:24px; text-align:center; background:var(--ash); color:var(--ink);
-   font:16px/1.6 "Optima","Gill Sans","Gill Sans MT",-apple-system,"Segoe UI",Roboto,sans-serif;
-   transition:opacity .6s ease}
- #load.hide{opacity:0; pointer-events:none}
- #load::before{content:''; position:absolute; inset:0; pointer-events:none;
-   background:
-     radial-gradient(150% 72% at 50% 132%, rgba(230,140,40,.26), rgba(0,0,0,0) 60%),
-     radial-gradient(90% 60% at 50% 134%, rgba(255,200,110,.12), rgba(0,0,0,0) 56%);
-   animation:ldEmber 9s ease-in-out infinite}
- @keyframes ldEmber{0%,100%{opacity:.82}50%{opacity:1}}
- #load .ld-inner{position:relative; width:100%; max-width:460px}
- #load .ld-glyph{width:56px; height:56px; margin:0 auto 24px; color:var(--bronze-hi);
-   animation:ldSpin 7s linear infinite}
- #load .ld-glyph svg{width:100%; height:100%; display:block}
- @keyframes ldSpin{to{transform:rotate(360deg)}}
- #load .ld-title{margin:0 0 10px;
-   font-family:"Hoefler Text","Baskerville","Palatino Linotype",Palatino,Georgia,serif;
-   font-weight:600; font-size:clamp(26px,5vw,40px); letter-spacing:.01em; color:var(--ink);
-   text-shadow:0 1px 0 rgba(0,0,0,.6), 0 0 34px rgba(201,165,74,.12)}
- #load .ld-title .accent{color:#c0392b; text-shadow:0 0 20px rgba(192,57,43,.4)}
- #load .ld-status{margin:0 0 22px; font-size:11.5px; letter-spacing:.22em; text-transform:uppercase;
-   font-weight:600; color:var(--bronze-hi)}
- #load .ld-bar{position:relative; height:4px; border-radius:3px; overflow:hidden;
-   background:rgba(138,122,78,.28)}
- #load .ld-fill{height:100%; width:0; border-radius:3px;
-   background:linear-gradient(90deg,var(--bronze),var(--gold),var(--gold-hi));
-   transition:width .3s ease}
- #load.indet .ld-fill{width:34%; animation:ldSlide 1.25s ease-in-out infinite}
- @keyframes ldSlide{0%{transform:translateX(-110%)} 100%{transform:translateX(330%)}}
- #load .ld-detail{margin-top:13px; min-height:16px; font:12px/1.4 ui-monospace,Menlo,Consolas,monospace;
-   color:var(--faint)}
- #load .ld-lede{margin:22px 0 0; font-size:13.5px; line-height:1.55; color:var(--muted)}
- /* [hidden] must win: an id rule with display:flex outranks the UA stylesheet, and the
-    join form then shows on a NORMAL load, asking a name and a password for no session. */
- #load [hidden]{display:none !important}
- #ld-join{margin:18px auto 0; max-width:420px; text-align:left; display:flex; flex-direction:column; gap:10px}
- #ld-join label{display:flex; align-items:center; gap:10px; font-size:13px; color:var(--ink)}
- #ld-join label span{flex:0 0 130px; color:var(--muted)}
- #ld-join input{flex:1; background:var(--panel-2); border:1px solid var(--line); color:var(--ink);
-   border-radius:6px; padding:7px 9px; font:13px inherit}
- #ld-join input:focus{outline:none; border-color:var(--bronze-hi)}
- #ld-addons{font-size:12.5px; line-height:1.5; color:var(--muted); background:var(--panel-2);
-   border:1px solid var(--line); border-radius:6px; padding:10px 12px}
- #ld-join-err{font-size:12.5px; color:#e08b7a}
- #load .ld-btns{display:flex; gap:10px; justify-content:flex-end}
- #load .ld-btns button{background:var(--panel-2); border:1px solid var(--line); color:var(--ink);
-   border-radius:6px; padding:7px 14px; font:13px inherit; cursor:pointer}
- #load .ld-btns button#ld-go{border-color:var(--bronze-hi); color:var(--bronze-hi)}
- #load .ld-btns button:hover{border-color:var(--bronze-hi)}
- #load .ld-credit{margin-top:26px; font-size:11px; letter-spacing:.08em; color:var(--faint)}
- #load .ld-credit a{color:var(--bronze-hi); text-decoration:none; border-bottom:1px solid var(--line)}
- #load .ld-credit a:hover{color:var(--gold)}
- #load.err .ld-glyph{animation:none; color:var(--err)}
- #load.err .ld-status{color:var(--err)}
- #load.err .ld-detail{color:var(--err)}
- #load.err .ld-fill{background:var(--err)}
- @media (prefers-reduced-motion:reduce){
-   #load::before,#load .ld-glyph{animation:none}
-   #load.indet .ld-fill{animation:none; width:100%}
- }
- /* --- The wall: shown INSTEAD of #load when the browser cannot run this build. Nothing on
-    it may look like progress -- no bar, no glyph animation, no lede -- because the previous
-    refusal (a status line inside the loader) was read as "it doesn't load" and reported as a
-    bug. Same type and tokens as #load so it is recognisably the same page. --- */
- #wall{position:fixed; inset:0; z-index:30; display:none; align-items:center; justify-content:center;
-   padding:24px; text-align:center; background:var(--ash); color:var(--ink);
-   font:16px/1.6 "Optima","Gill Sans","Gill Sans MT",-apple-system,"Segoe UI",Roboto,sans-serif}
- #wall.show{display:flex}
- #wall .w-inner{width:100%; max-width:34em}
- #wall .w-brand{font-size:11px; letter-spacing:.22em; text-transform:uppercase; color:var(--faint); margin:0 0 28px}
- #wall .w-title{margin:0 0 14px; font-size:clamp(26px,5vw,38px); line-height:1.15; font-weight:600;
-   letter-spacing:.01em; color:var(--gold-hi)}
- #wall .w-seen{margin:0 0 18px; font-size:15px; color:var(--muted)}
- #wall .w-why{margin:0 0 28px; font-size:15px; line-height:1.55; color:var(--ink)}
- #wall .w-btns{display:flex; gap:12px; justify-content:center; flex-wrap:wrap; margin:0 0 30px}
- #wall .w-btns a,#wall .w-btns button{display:inline-block; background:var(--panel-2); border:1px solid var(--bronze-hi);
-   color:var(--bronze-hi); border-radius:8px; padding:12px 22px; font:15px inherit; font-weight:600;
-   text-decoration:none; cursor:pointer; min-width:150px}
- #wall .w-btns a:hover,#wall .w-btns button:hover{background:var(--bronze-hi); color:var(--ash)}
- #wall .w-foot{font-size:12px; line-height:1.6; letter-spacing:.04em; color:var(--faint)}
- #wall .w-foot a{color:var(--bronze-hi); text-decoration:none; border-bottom:1px solid var(--line)}
- #wall [hidden]{display:none !important}
+ /* MESC launch screen. Scope every rule so the FreeCAD canvas keeps its original UI. */
+ #load,#wall{--cad-navy:#004A6E;--cad-cyan:#0092AC;--cad-white:#FFFFFF;
+   position:fixed;inset:0;z-index:20;display:grid;grid-template-columns:40% 60%;
+   box-sizing:border-box;overflow:auto;background:var(--cad-white);color:var(--cad-navy);
+   font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;
+   transition:opacity .35s ease,visibility .35s}
+ #load *,#wall *{box-sizing:border-box}
+ #load.hide{opacity:0;visibility:hidden;pointer-events:none}
+ #load .ld-brand,#wall .ld-brand{position:relative;display:flex;flex-direction:column;
+   justify-content:center;align-items:flex-start;min-height:100%;padding:72px clamp(32px,4.8vw,80px);
+   background:var(--cad-navy);color:var(--cad-white)}
+ #load .ld-brand::before,#wall .ld-brand::before{content:"";position:absolute;top:16%;left:clamp(32px,4.8vw,80px);
+   width:88px;height:8px;background:var(--cad-cyan)}
+ #load .ld-glyph,#wall .ld-glyph{width:176px;height:176px;margin:0 0 20px;color:var(--cad-white)}
+ #load .ld-glyph svg,#wall .ld-glyph svg{display:block;width:100%;height:100%}
+ #load .ld-title,#wall .ld-title{margin:0 0 16px;font-size:clamp(42px,7vw,112px);font-weight:700;line-height:1.05;letter-spacing:-.045em}
+ #load .ld-subtitle,#wall .ld-subtitle{max-width:12em;margin:0;font-size:clamp(19px,2.6vw,36px);line-height:1.35;font-weight:400;letter-spacing:-.015em}
+ #load .ld-inner,#wall .w-inner{position:relative;display:flex;flex-direction:column;justify-content:center;
+   min-width:0;padding:72px clamp(28px,6.2vw,104px) 180px}
+ #load .ld-status,#wall .w-title{margin:0 0 26px;font-size:clamp(24px,2.6vw,40px);font-weight:650;line-height:1.25;letter-spacing:-.025em;overflow-wrap:anywhere}
+ #load .ld-bar{height:14px;border-radius:7px;overflow:hidden;background:rgb(0 74 110 / .16)}
+ #load .ld-fill{height:100%;width:0;border-radius:4px;background:var(--cad-cyan);transition:width .3s ease}
+ #load.indet .ld-fill{width:34%;animation:ldSlide 1.4s ease-in-out infinite}
+ @keyframes ldSlide{from{transform:translateX(-105%)}to{transform:translateX(300%)}}
+ #load .ld-detail{min-height:24px;margin-top:20px;font-size:18px;line-height:1.5;overflow-wrap:anywhere}
+ #load .ld-lede{margin:34px 0 0;font-size:20px;line-height:1.55}
+ #load .ld-credit,#wall .w-foot{position:absolute;right:clamp(28px,6.2vw,104px);bottom:48px;
+   left:clamp(28px,6.2vw,104px);margin:0;font-size:14px;line-height:1.8;text-align:right}
+ #load .ld-credit a,#wall .w-foot a{color:var(--cad-navy);text-decoration:underline;text-underline-offset:3px}
+ #load #buildstamp{display:block;font-size:12px;overflow-wrap:anywhere}
+ #load [hidden],#wall [hidden]{display:none!important}
+ #load #ld-join{display:flex;flex-direction:column;gap:16px;margin:24px 0 0;text-align:left}
+ #load #ld-join label{display:flex;flex-direction:column;gap:6px;font-size:15px;font-weight:600}
+ #load #ld-join input{min-width:0;width:100%;min-height:44px;border:1px solid var(--cad-navy);
+   border-radius:4px;padding:10px 12px;background:var(--cad-white);color:var(--cad-navy);font-family:inherit;font-size:16px;line-height:1.4}
+ #load #ld-addons,#load #ld-join-err{font-size:15px;overflow-wrap:anywhere}
+ #load #ld-join-err{border-left:3px solid var(--cad-navy);padding-left:12px;font-weight:600}
+ #load .ld-btns,#wall .w-btns{display:flex;flex-wrap:wrap;gap:12px;margin:22px 0 0}
+ #load button,#wall .w-btns a,#wall .w-btns button{display:inline-flex;justify-content:center;align-items:center;
+   min-height:44px;border:2px solid var(--cad-navy);border-radius:4px;padding:10px 18px;
+   background:var(--cad-navy);color:var(--cad-white);font-family:inherit;font-size:16px;line-height:1.4;font-weight:600;
+   text-decoration:none;cursor:pointer;overflow-wrap:anywhere}
+ #load #ld-alt,#wall #w-btns-desktop a+a{background:var(--cad-white);color:var(--cad-navy)}
+ #load button:hover,#wall .w-btns a:hover,#wall .w-btns button:hover{box-shadow:inset 0 -4px var(--cad-cyan)}
+ #load :focus-visible,#wall :focus-visible{outline:3px solid var(--cad-navy);outline-offset:5px}
+ #load .ld-inner{text-align:center}
+ #load.err .ld-inner{text-align:left}
+ #load.err .ld-bar{display:none}
+ #load.err .ld-fill{animation:none}
+ #load.err .ld-detail{margin-top:0}
+ #load.err .ld-lede{display:none}
+ #load #ld-recovery{margin-top:24px;font-size:16px}
+ #load #ld-recovery p{margin:0 0 18px}
+ #wall{z-index:30;display:none}
+ #wall.show{display:grid}
+ #wall .w-seen{margin:0 0 18px;font-weight:600}
+ #wall .w-why{margin:0;font-size:17px;line-height:1.6;overflow-wrap:anywhere}
+ #wall .w-foot{text-align:left}
  body.walled{overflow:hidden}
- body.walled #logtoggle{display:none}
-
+ body.walled #logtoggle,body:not(.booted) #logtoggle{display:none}
+ @media(max-width:720px){
+   #load,#wall{grid-template-columns:1fr;grid-template-rows:max-content 1fr}
+   #load .ld-brand,#wall .ld-brand{padding:32px 28px;min-height:0}
+   #load .ld-brand::before,#wall .ld-brand::before{position:static;width:48px;height:5px;margin-bottom:24px}
+   #load .ld-glyph,#wall .ld-glyph{width:42px;height:42px;position:absolute;right:28px;top:27px;margin:0}
+   #load .ld-title,#wall .ld-title{font-size:42px;margin-bottom:10px}
+   #load .ld-subtitle,#wall .ld-subtitle{font-size:19px;max-width:none}
+   #load .ld-inner,#wall .w-inner{justify-content:flex-start;padding:36px 28px}
+   #load .ld-status,#wall .w-title{font-size:26px}
+   #load .ld-inner{text-align:left}
+   #load .ld-lede{font-size:17px;margin-top:26px}
+   #load .ld-credit,#wall .w-foot{position:static;text-align:left;margin-top:48px}
+ }
+ @media(min-width:721px) and (max-height:620px){
+   #load .ld-brand::before,#wall .ld-brand::before{top:32px}
+   #load .ld-inner,#wall .w-inner{padding-top:36px;padding-bottom:36px}
+   #load .ld-credit,#wall .w-foot{position:static;margin-top:36px}
+ }
+ @media(prefers-reduced-motion:reduce){
+   #load,#wall,#load .ld-fill{transition:none}
+   #load.indet .ld-fill{animation:none;width:34%}
+ }
 </style></head>
 <body>
 <div id="screen"></div>
-<div id="load" class="indet">
-  <div class="ld-inner">
-    <div class="ld-glyph" aria-hidden="true">
+<div id="load" class="indet" aria-label="Opening FreeCAD">
+  <div class="ld-brand"><div class="ld-glyph" aria-hidden="true">
       <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.6"
            stroke-linecap="round" stroke-linejoin="round">
         <!-- isometric CAD cube -->
@@ -194,49 +182,84 @@ document.addEventListener('DOMContentLoaded', function () {
         <circle cx="24" cy="24" r="2.2" fill="currentColor" stroke="none"/>
       </svg>
     </div>
-    <h1 class="ld-title" id="ld-title">Free<span class="accent">CAD</span></h1>
-    <div class="ld-status" id="ld-status">Preparing the workbench&hellip;</div>
-    <div class="ld-bar"><div class="ld-fill" id="ld-fill"></div></div>
-    <div class="ld-detail" id="ld-detail">first load downloads about 115 MB</div>
-    <!-- Joining a shared session asks for a name, sometimes a password, and consent for
-         add-ons. It belongs here, in the page's own type, rather than in a browser
-         prompt(): this runs before FreeCAD exists, so nothing here can crash the app. -->
+    <h1 class="ld-title" id="ld-title">FreeCAD</h1>
+    <p class="ld-subtitle">Your classroom CAD workspace.</p>
+  </div>
+  <div class="ld-inner">
+    <h2 class="ld-status" id="ld-status" role="status" aria-live="polite" aria-atomic="true">Preparing the workbench&hellip;</h2>
+    <div class="ld-bar" id="ld-progress" role="progressbar" aria-label="Loading FreeCAD" aria-valuemin="0" aria-valuemax="100"><div class="ld-fill" id="ld-fill"></div></div>
+    <div class="ld-detail" id="ld-detail">First load downloads about 115 MB.</div>
     <form id="ld-join" hidden autocomplete="off" onsubmit="return false">
       <label id="ld-name-row"><span>Your name</span><input id="ld-name" maxlength="32" placeholder="Guest"></label>
       <label id="ld-pw-row" hidden><span>Session password</span><input id="ld-pw" type="password"></label>
       <div id="ld-addons" hidden></div>
-      <div id="ld-join-err" hidden></div>
+      <div id="ld-join-err" role="alert" hidden></div>
       <div class="ld-btns"><button type="submit" id="ld-go">Join</button><button type="button" id="ld-alt" hidden></button></div>
     </form>
-    <!-- Says what this page IS, in prose. Two audiences need it and neither was served before:
-         a visitor staring at a 115 MB download with no explanation, and a crawler, for which
-         this boot panel is the ENTIRE readable page — the app itself is a canvas. -->
-    <p class="ld-lede">FreeCAD, the open-source parametric 3D CAD modeller, compiled to
-      WebAssembly. The real application, with its Qt interface, the OpenCASCADE geometry
-      kernel and an embedded Python, running in this tab. Nothing is installed, and no
-      drawing leaves your machine.</p>
-    <div class="ld-credit">For help, ask your teacher &middot; <a href="./legal.html" target="_blank" rel="noopener">Licenses and attribution</a><span id="buildstamp"></span></div>
+    <p class="ld-lede">FreeCAD opens automatically when it’s ready.</p>
+    <div id="ld-recovery" hidden>
+      <p>Check your connection and reload the page. If it still won’t open, ask your teacher for help.</p>
+      <button type="button" id="ld-retry">Reload page</button>
+    </div>
+    <div class="ld-credit">For help, ask your teacher.<br><a href="./legal.html" target="_blank" rel="noopener">Licenses and attribution</a><span id="buildstamp"></span></div>
   </div>
 </div>
-<!-- Browser wall. Filled and shown by the support gate below; stays display:none on any
-     browser that passes the probe, so the supported path never sees it. -->
 <div id="wall" role="alert">
+  <div class="ld-brand"><div class="ld-glyph" aria-hidden="true">
+      <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.6"
+           stroke-linecap="round" stroke-linejoin="round">
+        <!-- isometric CAD cube -->
+        <path d="M24 5 41 14.5 41 33.5 24 43 7 33.5 7 14.5Z"/>
+        <path d="M24 5 24 24 41 14.5M24 24 7 14.5M24 24 24 43"/>
+        <circle cx="24" cy="24" r="2.2" fill="currentColor" stroke="none"/>
+      </svg>
+    </div>
+    <h1 class="ld-title" id="w-brand-title">FreeCAD</h1>
+    <p class="ld-subtitle">Your classroom CAD workspace.</p>
+  </div>
   <div class="w-inner">
-    <p class="w-brand">FreeCAD for class</p>
-    <h1 class="w-title" id="w-title">This needs Chrome, Edge or Firefox on a desktop.</h1>
+    <h2 class="w-title" id="w-title">This needs Chrome, Edge or Firefox on a desktop.</h2>
     <p class="w-seen" id="w-seen"></p>
-    <p class="w-why" id="w-why">FreeCAD-Web runs the whole application inside your browser and depends on
-      JavaScript Promise Integration, which Chrome and Edge 137 and Firefox 153 ship. Nothing has been downloaded.</p>
+    <p class="w-why" id="w-why">Open this page in Chrome or Edge 137 or later, or Firefox 153 or later. Nothing has been downloaded.</p>
     <div class="w-btns" id="w-btns-desktop">
       <a href="https://www.google.com/chrome/" target="_blank" rel="noopener">Get Chrome</a>
       <a href="https://www.microsoft.com/edge" target="_blank" rel="noopener">Get Edge</a>
     </div>
-    <div class="w-btns" id="w-btns-mobile" hidden>
-      <button type="button" id="w-copy">Copy this link</button>
-    </div>
-    <p class="w-foot">Chrome or Edge 137 and later, or Firefox 153 and later. Safari cannot run this version yet. Ask your teacher for help.</p>
+    <div class="w-btns" id="w-btns-mobile" hidden><button type="button" id="w-copy">Copy this link</button></div>
+    <p class="w-foot">Chrome or Edge 137 and later, or Firefox 153 and later. Safari cannot run this version yet. Ask your teacher for help.<br><a href="./legal.html" target="_blank" rel="noopener">Licenses and attribution</a></p>
   </div>
 </div>
+<script>
+// Launch presentation only. Engine, storage, session and readiness gates remain below.
+(function () {
+  var load=document.getElementById('load'),status=document.getElementById('ld-status');
+  var bar=document.getElementById('ld-progress'),detail=document.getElementById('ld-detail');
+  var recovery=document.getElementById('ld-recovery');
+  var viewport=document.querySelector('meta[name="viewport"]');
+  var runtimeViewport=viewport.content;
+  viewport.content='width=device-width,initial-scale=1,viewport-fit=cover';
+  document.getElementById('ld-retry').addEventListener('click',function(){location.reload();});
+  function sync(){
+    var failed=load.classList.contains('err') || /^could not load /i.test(status.textContent);
+    if(failed && !load.classList.contains('err')) load.classList.add('err');
+    recovery.hidden=!failed;
+    if(failed && status.textContent!=="FreeCAD couldn’t start"){
+      if(/^could not load /i.test(status.textContent)) detail.textContent=status.textContent;
+      status.textContent="FreeCAD couldn’t start";
+    }
+    var match=/([0-9]+)%/.exec(detail.textContent);
+    if(!failed && !load.classList.contains('indet') && match) bar.setAttribute('aria-valuenow',Math.max(0,Math.min(100,+match[1])));
+    else bar.removeAttribute('aria-valuenow');
+    if(load.classList.contains('hide')){
+      load.setAttribute('aria-hidden','true');load.inert=true;
+      viewport.content=runtimeViewport;observer.disconnect();
+    }
+  }
+  var observer=new MutationObserver(sync);
+  observer.observe(load,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:['class']});
+  sync();
+})();
+</script>
 <div id="log" class="hidden"><span id="status">loading…</span></div>
 <button id="logtoggle" title="show/hide boot log">log</button>
 <script>
