@@ -1274,8 +1274,10 @@ jobs:
           python3 tools/native-input-bundle.py verify-inputs link
           cp .native-build-origin.json .native-toolchain-inputs.json native-diagnostic/
           cp -R .native-restored native-diagnostic/producer-receipts
+          python3 tools/native-input-bundle.py bind-diagnostic link --folder native-diagnostic
           git rev-parse HEAD > native-diagnostic/SOURCE-COMMIT.txt
-          git status --porcelain > native-diagnostic/SOURCE-WORKTREE.txt
+          git status --porcelain --untracked-files=no > native-diagnostic/SOURCE-WORKTREE.txt
+          git status --porcelain > native-diagnostic/SOURCE-WORKTREE-ALL.txt
           sha256sum patches/qt-*.patch patches/freecad.patch > native-diagnostic/SOURCE-PATCHES.sha256
           printf '%s\n' \
             'UNPUBLISHED DIAGNOSTIC BUILD: browser outcomes are evidence, not release approval.' \
@@ -1291,6 +1293,7 @@ jobs:
         with:
           name: cad1-native-diagnostic-${{ github.sha }}
           path: native-diagnostic/
+          include-hidden-files: true
           compression-level: 0
           retention-days: 7
           if-no-files-found: error

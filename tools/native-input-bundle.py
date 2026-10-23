@@ -51,6 +51,16 @@ RECIPE_GLOBS = ['tools/**', 'toolchain/**', 'patches/**', '.github/workflows/**'
                 '*.meson.in', '*requirements*.txt', 'CMakeLists.txt', 'pyproject.toml', 'package*.json']
 RESERVE_BYTES = 1024 ** 3
 PYTHON_BUILD_DISTRIBUTIONS = ['pip', 'meson', 'ninja', 'pybind11', 'setuptools', 'wheel', 'cppy', 'cython', 'swig']
+# One reviewed output-retention bridge. These boundaries come from code, never
+# from its separately retained evidence policy. Existing recipe globs stay intact.
+COMPATIBILITY_FILE = 'native-artifact-output-compatibility.json'
+COMPATIBILITY_SOURCE = 'a2649e165b168bfbec16827fc5379e9e712316ed'
+COMPATIBILITY_RECIPE = '812765ae50b7868410a2376b99fc8332ed8f30abc29d21e2f0222446fb1b67f8'
+COMPATIBILITY_GIT_TREE = '4764b677272ad3fb236358696e6518b85f45ab2d301ce5d6bd6e81f35fd014a5'
+COMPATIBILITY_RUNS = {'cpp': '40016791813', 'qt': '40016804746'}
+COMPATIBILITY_RECIPE_PATHS = {'tools/native-input-bundle.py', '.github/workflows/link-freecad.yml'}
+COMPATIBILITY_GIT_PATHS = COMPATIBILITY_RECIPE_PATHS | {
+    COMPATIBILITY_FILE, 'play-gui/am/fcweb_share.py', 'play-gui/freecad-gui.html'}
 
 
 def digest(path):
@@ -215,6 +225,82 @@ def identity_hash(data):
     return hashlib.sha256(canonical(data).encode()).hexdigest()
 
 
+def git_tree(commit):
+    raw = subprocess.check_output(['git', 'ls-tree', '-rz', commit], cwd=SOURCE)
+    return {entry.split(b'\t', 1)[1].decode(): entry.split(b'\t', 1)[0].decode()
+            for entry in raw.split(b'\0') if entry}
+
+
+def checkout_commit():
+    return subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=SOURCE, text=True).strip()
+
+
+def recipe_acceptance(kind, manifest, consumer_commit=None):
+    current, fingerprint = recipe(kind)
+    if manifest['format'] != 3 or manifest['kind'] != kind:
+        raise RuntimeError('producer kind/format does not match this consumer')
+    if manifest['recipe_sha256'] == fingerprint and manifest['recipe_files'] == current:
+        return None
+    origin = manifest['build_origin']
+    if (kind not in COMPATIBILITY_RUNS or manifest['source_commit'] != COMPATIBILITY_SOURCE or
+        origin['source_commit'] != COMPATIBILITY_SOURCE or origin['run_id'] != COMPATIBILITY_RUNS[kind] or
+        origin['run_attempt'] != '1' or origin['repository'] != 'MaskwaSam/freecad-web' or
+        manifest['recipe_sha256'] != COMPATIBILITY_RECIPE or
+        len(manifest['recipe_files']) != 204 or identity_hash(manifest['recipe_files']) != COMPATIBILITY_RECIPE):
+        raise RuntimeError('producer recipe is neither current nor the exact reviewed CPP/Qt output bridge')
+    file = SOURCE / COMPATIBILITY_FILE
+    policy = json.loads(file.read_text())
+    old = policy['old_recipe_files']
+    if (policy['format'] != 1 or policy['old_recipe_sha256'] != COMPATIBILITY_RECIPE or
+        identity_hash(old) != COMPATIBILITY_RECIPE or old != manifest['recipe_files'] or
+        policy['new_recipe_sha256'] != fingerprint or policy['new_recipe_files'] != current or
+        set(old) != set(current)):
+        raise RuntimeError('output bridge evidence does not match the complete old/current recipe maps')
+    changes = {p: {'before': old[p], 'after': current[p]} for p in old if old[p] != current[p]}
+    if set(changes) != COMPATIBILITY_RECIPE_PATHS or policy['reviewed_recipe_changes'] != changes:
+        raise RuntimeError('output bridge includes an unreviewed/native recipe change')
+    baseline = policy['old_git_tree']
+    live = git_tree('HEAD')
+    if identity_hash(baseline) != COMPATIBILITY_GIT_TREE:
+        raise RuntimeError('output bridge baseline Git tree differs from the reviewed producer tree')
+    changed = {p for p in set(baseline) | set(live) if baseline.get(p) != live.get(p)}
+    if changed != COMPATIBILITY_GIT_PATHS:
+        raise RuntimeError('output bridge checkout has unexpected changed Git paths')
+    # Check the live files are exactly the committed files; build outputs elsewhere
+    # remain outside this narrow source check. The evidence policy is also committed.
+    for path in changed:
+        blob = subprocess.check_output(['git', 'hash-object', '--', path], cwd=SOURCE, text=True).strip()
+        if live.get(path) != '100644 blob ' + blob and live.get(path) != '100755 blob ' + blob:
+            raise RuntimeError('output bridge source/evidence differs from its consumer commit')
+    return {'format': 1, 'kind': kind, 'run_id': origin['run_id'], 'run_attempt': origin['run_attempt'],
+            'producer_source_commit': COMPATIBILITY_SOURCE, 'consumer_source_commit': consumer_commit or checkout_commit(),
+            'producer_recipe_sha256': COMPATIBILITY_RECIPE, 'consumer_recipe_sha256': fingerprint,
+            'producer_manifest_canonical_sha256': identity_hash(manifest), 'policy_file': COMPATIBILITY_FILE,
+            'policy_sha256': digest(file), 'reviewed_recipe_changes': changes,
+            'changed_git_paths': sorted(changed)}
+
+
+def compatibility_bundle(workspace, kinds, consumer_commit=None):
+    selected = {}
+    for kind in kinds:
+        manifest = json.loads((workspace / '.native-restored' / (kind + '.manifest.json')).read_text())
+        acceptance = recipe_acceptance(kind, manifest, consumer_commit)
+        sidecar = workspace / '.native-restored' / (kind + '.recipe-compatibility.json')
+        if acceptance is not None:
+            if consumer_commit is None and json.loads(sidecar.read_text()) != acceptance:
+                raise RuntimeError('output bridge sidecar differs from exact retained producer/current consumer')
+            selected[kind] = acceptance
+        elif sidecar.exists():
+            raise RuntimeError('unexpected compatibility sidecar for a current-recipe producer')
+    if not selected:
+        return {}
+    file = SOURCE / COMPATIBILITY_FILE
+    retained = workspace / '.native-restored' / COMPATIBILITY_FILE
+    if retained.read_bytes() != file.read_bytes():
+        raise RuntimeError('retained output bridge evidence bytes differ from the current policy')
+    return {'policy_sha256': digest(file), 'policy': json.loads(file.read_text()), 'producers': selected}
+
+
 def receipts(workspace, kinds):
     result = {}
     for kind in kinds:
@@ -228,8 +314,10 @@ def receipts(workspace, kinds):
         expected = make_receipt(kind, manifest, receipt['manifest_sha256'])
         if receipt != expected:
             raise RuntimeError('producer receipt differs from its complete retained manifest')
+        recipe_acceptance(kind, manifest)
         validate_identities(kind, receipt['input_identities'])
         result[kind] = receipt
+    compatibility_bundle(workspace, kinds)
     return result
 
 
@@ -339,7 +427,8 @@ def pack(kind, folder, workspace):
         'platform': platform.system(), 'machine': platform.machine(), 'included_paths': included, 'omitted_optional_globs': omitted,
         'archive': archive.name, 'archive_sha256': digest(archive), 'archive_bytes': archive.stat().st_size,
         'unpacked_bytes': total, 'members': members, 'tree': tree, 'input_identities': identities,
-        'input_identities_sha256': identity_hash(identities), 'dependencies': dependencies}
+        'input_identities_sha256': identity_hash(identities), 'dependencies': dependencies,
+        'recipe_compatibility': compatibility_bundle(workspace, ['cpp', 'qt']) if kind == 'python' else {}}
     (folder / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
     print(json.dumps({'kind': kind, 'archive_bytes': manifest['archive_bytes'], 'archive_sha256': manifest['archive_sha256'],
         'build_origin': origin, 'recipe_sha256': fingerprint}))
@@ -347,9 +436,7 @@ def pack(kind, folder, workspace):
 
 def unpack(kind, folder, workspace, run):
     manifest = json.loads((folder / 'manifest.json').read_text())
-    recipes, fingerprint = recipe(kind)
-    if (manifest['format'] != 3 or manifest['kind'] != kind or manifest['recipe_sha256'] != fingerprint or manifest['recipe_files'] != recipes):
-        raise RuntimeError('producer kind/source recipe does not match this consumer')
+    acceptance = recipe_acceptance(kind, manifest)
     validate_origin(kind, manifest['build_origin'], run)
     validate_identities(kind, manifest['input_identities'])
     if manifest['input_identities_sha256'] != identity_hash(manifest['input_identities']):
@@ -375,6 +462,8 @@ def unpack(kind, folder, workspace, run):
         selected = receipts(workspace, ['cpp', 'qt'])
         if manifest['dependencies'] != selected:
             raise RuntimeError('Python was built against different C++/Qt producer artifacts')
+        if manifest.get('recipe_compatibility') != compatibility_bundle(workspace, ['cpp', 'qt'], manifest['source_commit']):
+            raise RuntimeError('Python output bridge policy/producer evidence differs from this link consumer')
         compare_input_identities(kind, manifest['input_identities'], selected, ['emsdk', 'host_qt'])
     archive = folder / (kind + '.tar.gz')
     if manifest['archive'] != archive.name or archive.stat().st_size != manifest['archive_bytes'] or digest(archive) != manifest['archive_sha256']:
@@ -413,14 +502,37 @@ def unpack(kind, folder, workspace, run):
     shutil.copyfile(folder / 'manifest.json', retained)
     receipt = make_receipt(kind, manifest, digest(retained))
     destination.write_text(json.dumps(receipt, indent=2) + '\n')
+    sidecar = destination.parent / (kind + '.recipe-compatibility.json')
+    if acceptance is not None:
+        sidecar.write_text(json.dumps(acceptance, indent=2) + '\n')
+        shutil.copyfile(SOURCE / COMPATIBILITY_FILE, destination.parent / COMPATIBILITY_FILE)
+    elif sidecar.exists():
+        sidecar.unlink()
     receipts(workspace, [kind])  # read back the retained complete manifest and identities
     print(json.dumps({'kind': kind, 'manifest_sha256': receipt['manifest_sha256'],
                       'input_identities_sha256': receipt['input_identities_sha256']}))
 
 
+def bind_diagnostic(workspace, folder):
+    pins = json.loads((SOURCE / 'tools/native-source-pins.json').read_text())
+    destination = folder / 'source-pins'
+    destination.mkdir(parents=True, exist_ok=True)
+    tree = workspace / 'deps/src/freecad'
+    for name in ['freecad', 'gsl', 'ondsel', 'addonmanager']:
+        root = tree if name == 'freecad' else tree / pins[name]['subdir']
+        receipt = root / '.fcweb-source-pin.json'
+        if not (root / pins[name]['marker']).is_file() or json.loads(receipt.read_text()) != pins[name]:
+            raise RuntimeError(f'actual source pin receipt differs from reviewed {name} input')
+        shutil.copyfile(receipt, destination / (name + '.json'))
+    shutil.copyfile(SOURCE / 'tools/native-source-pins.json', destination / 'expected-source-pins.json')
+    shutil.copyfile(SOURCE / 'tools/native-toolchain-pins.json', destination / 'expected-toolchain-pins.json')
+    if compatibility_bundle(workspace, ['cpp', 'qt']):
+        shutil.copyfile(SOURCE / COMPATIBILITY_FILE, folder / COMPATIBILITY_FILE)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('operation', choices=['begin', 'check-run', 'pack', 'unpack', 'verify-inputs'])
+    parser.add_argument('operation', choices=['begin', 'check-run', 'pack', 'unpack', 'verify-inputs', 'bind-diagnostic'])
     parser.add_argument('kind', choices=list(WORKFLOWS))
     parser.add_argument('--folder', type=Path)
     parser.add_argument('--workspace', type=Path, default=Path.cwd())
@@ -438,6 +550,10 @@ def main():
         verify_inputs(args.kind, workspace, args.components)
     elif args.operation == 'pack':
         pack(args.kind, args.folder or Path('native-inputs') / args.kind, workspace)
+    elif args.operation == 'bind-diagnostic':
+        if args.kind != 'link':
+            raise RuntimeError('only link produces a bound native diagnostic')
+        bind_diagnostic(workspace, args.folder or Path('native-diagnostic'))
     else:
         run = json.loads(args.run_json.read_text())
         check_run(args.kind, run, args.run_id, os.environ['GITHUB_REPOSITORY'])
