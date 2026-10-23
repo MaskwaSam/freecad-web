@@ -1570,11 +1570,14 @@ window.fcwebNotify = function (text, kind, actions, opts) {
   var SID_RE = /(?:^|[?&])s=([0-9a-f]{32})/;
   var STATE = '/tmp/fcweb_share.json', CTL = '/tmp/fcweb_share_ctl.json', PWFILE = '/tmp/fcweb_share_pw',
       REQ = '/tmp/fcweb_share_req', STAGE = '/tmp/_fcsession', MCP = '/tmp/fcmcp';
+  // Static deployments have no optional sharing API; declare that before boot.
+  var sharingConfig = document.querySelector('meta[name="fcweb-sharing"]');
+  var sharingAvailable = !sharingConfig || sharingConfig.content !== 'off';
   var S = window.__fcSession = {
     mode: SID_RE.test(location.search || '') ? 'session' : 'normal',
     id: null, key: null, client: null, edit: null, role: null, holder: false, name: '',
     v: 0, applied: 0, envv: 0, doc: '', owner: '', health: null, agentUrl: '', tab: null,
-    lastPublished: 0, ended: false, unavailable: false, contact: true, holderName: null,
+    lastPublished: 0, ended: false, unavailable: !sharingAvailable, contact: true, holderName: null,
     silent: false, watching: 0, note: '', actingAs: 'human', pendingName: null, cam: '',
     preFiles: null, pre: null, ctlSent: '', st: null, everHolder: false, divergePrompted: false
   };
@@ -1598,6 +1601,11 @@ window.fcwebNotify = function (text, kind, actions, opts) {
     return h;
   }
   async function api(method, path, body, extra) {
+    if (!sharingAvailable) {
+      var unavailable = new Error('Sharing is not available on this site. Save your file to your device instead.');
+      unavailable.code = 'unavailable';
+      throw unavailable;
+    }
     var r;
     try { r = await fetch(path, { method: method, headers: hdrs(extra), body: body, cache: 'no-store' }); }
     catch (e) { var ne = new Error('cannot reach the session service'); ne.code = 'network'; throw ne; }
@@ -2166,7 +2174,7 @@ window.fcwebNotify = function (text, kind, actions, opts) {
   // ---- owner: create / resume / settings ---------------------------------------------
   async function ownerEnsure(st) {
     if (S.id) return;
-    if (S.unavailable) { if (!S.warnedUnavail) { S.warnedUnavail = true; toast('Sharing is not available on this site: it does not run the session service. Ask the operator to start it with `docker compose --profile share up -d`.', 'warn'); } return; }
+    if (S.unavailable) { if (!S.warnedUnavail) { S.warnedUnavail = true; toast('Sharing is not available on this site. Save your file to your device instead.', 'warn'); } return; }
     var key = st.key, id = st.session;
     if (!key) { key = hex(16); id = await idOf(key); }
     try {
@@ -2400,8 +2408,10 @@ window.fcwebNotify = function (text, kind, actions, opts) {
     if (!ready()) return;
     if (S.mode === 'normal' && S.health === null) {
       S.health = false;
-      try { var h = (await api('GET', '/share/health')).json; S.health = h; log('share', 'backend v' + h.v + ', ' + h.n + ' session(s), ' + Math.round(h.used / 1048576) + ' MB of ' + Math.round(h.quota / 1073741824) + ' GB used, max ' + h.max_mb + ' MB per document'); }
-      catch (e) { S.unavailable = true; log('share', 'no backend (' + e.message + ') — sharing is off on this site'); }
+      if (sharingAvailable) {
+        try { var h = (await api('GET', '/share/health')).json; S.health = h; log('share', 'backend v' + h.v + ', ' + h.n + ' session(s), ' + Math.round(h.used / 1048576) + ' MB of ' + Math.round(h.quota / 1073741824) + ' GB used, max ' + h.max_mb + ' MB per document'); }
+        catch (e) { S.unavailable = true; log('share', 'no backend (' + e.message + ') — sharing is off on this site'); }
+      }
       sendCtl();
     }
     var raw = readText(STATE); if (!raw) return;
