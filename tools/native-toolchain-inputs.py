@@ -132,6 +132,23 @@ def replay_python_tools(workspace, python):
     python_build_tools(workspace, dest, required=True)
 
 
+def emcc_version_identity(text, expected):
+    # emcc may emit first-use cache diagnostics before its actual version banner.
+    # Match the complete real banner, never a version substring in diagnostics.
+    pattern = re.compile(
+        r'^emcc \(Emscripten gcc/clang-like replacement \+ linker emulating GNU ld\) '
+        r'(?P<version>[0-9]+(?:\.[0-9]+){2}(?:[-+][0-9A-Za-z.-]+)?)'
+        r'(?:[ \t]+\([^\r\n]*\))?[ \t]*$', re.MULTILINE)
+    matches = list(pattern.finditer(text))
+    if len(matches) != 1 or matches[0]['version'] != expected:
+        observed = [match['version'] for match in matches[:4]]
+        excerpt = text if len(text) <= 2048 else text[:1024] + '\n... output truncated ...\n' + text[-1024:]
+        raise RuntimeError(
+            f'installed emcc banner must identify exactly {expected}; observed versions={observed!r}; '
+            f'observed output (bounded): {excerpt!r}')
+    return {'version': matches[0]['version'], 'banner': matches[0].group(0).rstrip()}
+
+
 def emsdk(workspace):
     pin = PINS['emsdk']
     dest = workspace / 'emsdk'
@@ -157,11 +174,14 @@ def emsdk(workspace):
         if not path.is_file():
             raise RuntimeError(f'installed emsdk missing {rel}')
         tools[rel] = {'sha256': digest(path), 'bytes': path.stat().st_size}
-    version = output('bash', '-c', 'set -e; export EMSDK_QUIET=1; . ./emsdk_env.sh >/dev/null; emcc --version', cwd=dest)
-    if pin['version'] not in version.splitlines()[0]:
-        raise RuntimeError('installed emcc version differs from pinned SDK')
-    record(workspace, 'emsdk', {'pin': pin, 'verified_commit': pin['commit'], 'emcc_version': version,
-                              'tools': tools, 'release_map_sha256': digest(dest / 'emscripten-releases-tags.json')})
+    version_output = output('bash', '-c', 'set -e; export EMSDK_QUIET=1; . ./emsdk_env.sh >/dev/null; emcc --version', cwd=dest)
+    version = emcc_version_identity(version_output, pin['version'])
+    # Preserve diagnostics without making their incidental order part of the ABI
+    # identity compared across clean C++/Qt/Python/link installations.
+    record(workspace, 'emsdk_version_output', version_output)
+    record(workspace, 'emsdk', {'pin': pin, 'verified_commit': pin['commit'], 'emcc_version': version['banner'],
+                              'emcc_version_number': version['version'], 'tools': tools,
+                              'release_map_sha256': digest(dest / 'emscripten-releases-tags.json')})
 
 
 def host_qt(workspace, reference_kind=None):
@@ -192,8 +212,8 @@ def host_qt(workspace, reference_kind=None):
         settings.write(stream)
     # Official metadata/hash checking stays enabled. Retained archives establish
     # exact downloaded host-tool identities, even when Qt updates mirror metadata.
-    run(python, '-m', 'aqt', 'install-qt', host['host'], host['target'], host['version'], host['architecture'],
-        '-m', *host['modules'], '-O', dest, '--keep', '--archive-dest', archives, '--config', config)
+    run(python, '-m', 'aqt', '--config', config, 'install-qt', host['host'], host['target'], host['version'], host['architecture'],
+        '-m', *host['modules'], '-O', dest, '--keep', '--archive-dest', archives)
     archive_ids = {p.name: {'bytes': p.stat().st_size, 'sha256': digest(p)} for p in sorted(archives.iterdir()) if p.is_file()}
     if not archive_ids:
         raise RuntimeError('aqt did not retain any verified host Qt archives')
