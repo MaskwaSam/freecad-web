@@ -51,14 +51,17 @@ RECIPE_GLOBS = ['tools/**', 'toolchain/**', 'patches/**', '.github/workflows/**'
                 '*.meson.in', '*requirements*.txt', 'CMakeLists.txt', 'pyproject.toml', 'package*.json']
 RESERVE_BYTES = 1024 ** 3
 PYTHON_BUILD_DISTRIBUTIONS = ['pip', 'meson', 'ninja', 'pybind11', 'setuptools', 'wheel', 'cppy', 'cython', 'swig']
-# One reviewed output-retention bridge. These boundaries come from code, never
+# One reviewed CPP/Qt consumer bridge: output retention and Python-only Pivy
+# Freetype discovery/order. The current global conservative fingerprint changes;
+# original CPP/Qt manifests/output bytes and their executed build paths are retained.
+# These boundaries come from code, never
 # from its separately retained evidence policy. Existing recipe globs stay intact.
 COMPATIBILITY_FILE = 'native-artifact-output-compatibility.json'
 COMPATIBILITY_SOURCE = 'a2649e165b168bfbec16827fc5379e9e712316ed'
 COMPATIBILITY_RECIPE = '812765ae50b7868410a2376b99fc8332ed8f30abc29d21e2f0222446fb1b67f8'
 COMPATIBILITY_GIT_TREE = '4764b677272ad3fb236358696e6518b85f45ab2d301ce5d6bd6e81f35fd014a5'
 COMPATIBILITY_RUNS = {'cpp': '40016791813', 'qt': '40016804746'}
-COMPATIBILITY_RECIPE_PATHS = {'tools/native-input-bundle.py', '.github/workflows/link-freecad.yml'}
+COMPATIBILITY_RECIPE_PATHS = {'tools/native-input-bundle.py', '.github/workflows/link-freecad.yml', 'configure-pivy-weh.sh', '.github/workflows/build-python-deps.yml'}
 COMPATIBILITY_GIT_PATHS = COMPATIBILITY_RECIPE_PATHS | {
     COMPATIBILITY_FILE, 'play-gui/am/fcweb_share.py', 'play-gui/freecad-gui.html'}
 
@@ -247,7 +250,7 @@ def recipe_acceptance(kind, manifest, consumer_commit=None):
         origin['run_attempt'] != '1' or origin['repository'] != 'MaskwaSam/freecad-web' or
         manifest['recipe_sha256'] != COMPATIBILITY_RECIPE or
         len(manifest['recipe_files']) != 204 or identity_hash(manifest['recipe_files']) != COMPATIBILITY_RECIPE):
-        raise RuntimeError('producer recipe is neither current nor the exact reviewed CPP/Qt output bridge')
+        raise RuntimeError('producer recipe is neither current nor the exact reviewed CPP/Qt consumer bridge')
     file = SOURCE / COMPATIBILITY_FILE
     policy = json.loads(file.read_text())
     old = policy['old_recipe_files']
@@ -258,7 +261,7 @@ def recipe_acceptance(kind, manifest, consumer_commit=None):
         raise RuntimeError('output bridge evidence does not match the complete old/current recipe maps')
     changes = {p: {'before': old[p], 'after': current[p]} for p in old if old[p] != current[p]}
     if set(changes) != COMPATIBILITY_RECIPE_PATHS or policy['reviewed_recipe_changes'] != changes:
-        raise RuntimeError('output bridge includes an unreviewed/native recipe change')
+        raise RuntimeError('consumer bridge includes a recipe change outside the reviewed output/Pivy paths')
     baseline = policy['old_git_tree']
     live = git_tree('HEAD')
     if identity_hash(baseline) != COMPATIBILITY_GIT_TREE:

@@ -501,7 +501,7 @@ jobs:
           fi
           [ -s deps/wasm/lib/pil-mod/libpil__imaging.a ] && grep -qx 2 deps/wasm/lib/pil-mod/.staged 2>/dev/null             || { echo "::error::pil-mod/libpil__imaging.a not produced"; exit 1; }
 
-      # Last, because it reaches into build-numpy for numpy's generated headers.
+      # After NumPy, because it reaches into build-numpy for generated headers.
       # matplotlib builds freetype and qhull as meson subprojects, and meson fetches
       # freetype 2.6.1 from savannah's "freetype-old" path, which is currently answering
       # 502 on every retry. meson checks the packagecache first and verifies the hash from
@@ -568,6 +568,25 @@ jobs:
           # 8 extensions + freetype/qhull/agg/ttconv. The darwin-only glob this script used
           # to have produced an empty directory and a silently crippled link.
           [ "$n" -ge 8 ] || { echo "::error::mpl-mod has $n archives, expected at least 8"; exit 1; }
+
+      # Pivy needs only Coin/SWIG/CPython and the Freetype pair just staged by
+      # matplotlib. Fail here before the independent IfcOpenShell/PySide builds.
+      # pivy: the SWIG Coin3D bindings, registered by MainGui.cpp as the builtin `_coin`.
+      # Needs the staged compat headers, so stage them from toolchain/include first --
+      # forcing the tracked copies over whatever a restored cache happens to hold, for the
+      # same reason build-deps.yml does.
+      - name: pivy (_coin)
+        id: lane_pivy
+        continue-on-error: ${{ inputs.runner != 'hosted' }}
+        run: |
+          set -e
+          . ./toolchain/env.sh
+          . .qtvenv/bin/activate
+          if [ -s deps/wasm/lib/pivy-mod/lib_coin.a ] && [ "${{ inputs.rebuild }}" != "true" ]; then
+            echo "  pivy: already built"; exit 0
+          fi
+          FCWEB_FORCE_STAGE_HEADERS=1 bash toolchain/stage-headers.sh
+          bash configure-pivy-weh.sh
 
       # IfcOpenShell: real IFC for the BIM workbench, built against OUR wasm OCCT 7.8.1 --
       # the version match matters, since it links OCCT's geometry kernel directly.
@@ -653,23 +672,6 @@ jobs:
       # One gate at the end, so a single broken lane does not hide the state of the
       # others. Every archive named here is one MainGui.cpp registers in its inittab; a
       # missing one is a trapping PyInit_* in the browser, not a link error.
-      # pivy: the SWIG Coin3D bindings, registered by MainGui.cpp as the builtin `_coin`.
-      # Needs the staged compat headers, so stage them from toolchain/include first --
-      # forcing the tracked copies over whatever a restored cache happens to hold, for the
-      # same reason build-deps.yml does.
-      - name: pivy (_coin)
-        id: lane_pivy
-        continue-on-error: ${{ inputs.runner != 'hosted' }}
-        run: |
-          set -e
-          . ./toolchain/env.sh
-          . .qtvenv/bin/activate
-          if [ -s deps/wasm/lib/pivy-mod/lib_coin.a ] && [ "${{ inputs.rebuild }}" != "true" ]; then
-            echo "  pivy: already built"; exit 0
-          fi
-          FCWEB_FORCE_STAGE_HEADERS=1 bash toolchain/stage-headers.sh
-          bash configure-pivy-weh.sh
-
       # The archives are only half of each package. Their Python side has to reach the
       # virtual filesystem too, or the link registers numpy._core._multiarray_umath as a
       # builtin that nothing can ever import. That is what shipped on 2026-08-24: three
