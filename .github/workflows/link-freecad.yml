@@ -53,6 +53,7 @@ on:
       # watching it meant a patch fix triggered only the COMPILE check and never a relink
       # -- the artifact would stay stale while CI went green.
       - 'patches/freecad.patch'
+      - 'patches/qt-*.patch'
       # apply.sh applies this one to the pyside-setup tree the Python-lane cache restores,
       # and refuses a tree stamped with a different version of it -- so a change to the
       # patch must re-run the link, or a rerun on an older commit fails at that refusal.
@@ -186,7 +187,7 @@ jobs:
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: qt/6.11.2/wasm_mt_weh
-          key: ${{ env.QT_KEY }}
+          key: ${{ env.QT_KEY }}-${{ hashFiles('patches/qt-*.patch') }}
 
       # This list must stay BYTE-IDENTICAL to the save list in build-python-deps.yml.
       # actions/cache derives a cache VERSION from the path list, and a restore only matches

@@ -7253,3 +7253,18 @@ diff --git a/src/Gui/Dialogs/DlgCustomizeSpNavSettings.cpp b/src/Gui/Dialogs/Dlg
      this->setLayout(layout);
  }
  
+--- a/src/Mod/Draft/draftguitools/gui_trackers.py
++++ b/src/Mod/Draft/draftguitools/gui_trackers.py
+@@ -92,2 +92,5 @@
+         """
++        # A nested finish can already have removed this tracker.
++        if self.switch is None:
++            return
+         ToDo.delay(self._removeSwitch, self.switch)
+@@ -136,3 +139,5 @@
+         """Set the visibility to False."""
+-        self.switch.whichChild = -1
++        # Hiding an already finalized tracker must be harmless.
++        if self.switch is not None:
++            self.switch.whichChild = -1
+         self.Visible = False

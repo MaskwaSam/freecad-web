@@ -3178,7 +3178,7 @@ window.fcRunPy = fcRunPy;
      // is the build-generated sysconfig data the image never carried (see its header),
      // without which `import zoneinfo` fails.
      const __siteFiles = {};
-     for (const name of ['sitecustomize.py', 'fcweb_requests.py', '_sysconfigdata__emscripten_wasm64-emscripten.py']) {
+     for (const name of ['sitecustomize.py', 'fcweb_requests.py', 'fcweb_draft_tracker_fix.py', '_sysconfigdata__emscripten_wasm64-emscripten.py']) {
        try {
          const r = await fetch('am/' + name, {cache: 'no-cache'});
          if (r.ok) __siteFiles[name] = new Uint8Array(await r.arrayBuffer());

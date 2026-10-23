@@ -45,6 +45,13 @@ jobs:
       - name: patch-freecad-js selftest
         run: python3 tools/patch-freecad-js.py --selftest
 
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "24"
+
+      - name: Draft cleanup and accessibility Wasm ABI regression checks
+        run: python3 tools/test-cad1-runtime-fixes.py
+
       # boot-gate.py tolerates one renderer death per scenario, and only because the
       # crash is a Chromium segfault at a fixed instruction offset with no newer
       # browser to move to. This fails the moment there IS one, so the workaround
@@ -52,17 +59,18 @@ jobs:
       - name: A newer Playwright image would retire the renderer-death tolerance
         run: python3 tools/check-playwright-current.py
 
-      # Proves the patches are present in what production is actually serving. This is the
-      # exact regression a relink causes, and it is invisible until the 3D view fails to come up.
-      - name: Verify the deployed FreeCAD.js still carries the GL patches
+      # Source CI must be able to pass BEFORE an incoming fix is deployed. Check
+      # compatibility by patching a downloaded COPY, then verify that copy. The
+      # post-deploy check in CAD1-RUNTIME-REPAIR.md checks untouched live bytes.
+      - name: Verify the incoming patch table accepts the current engine
         run: |
           set -e
           url=$(curl -sS https://freecad.virtastic.app/ | grep -oE 'FreeCAD\.js\?v=[a-z0-9]+' | head -1)
           echo "deployed loader: $url"
           curl -fsS "https://freecad.virtastic.app/$url" -o /tmp/FreeCAD.js
           ls -la /tmp/FreeCAD.js
-          # The path is argv[1]; --check must follow it (and stops the tool writing back).
-          # Verified against the live loader: every patch reports "already applied", exit 0.
+          python3 tools/patch-freecad-js.py /tmp/FreeCAD.js
+          # --check verifies the patched staging copy, not deployment state.
           python3 tools/patch-freecad-js.py /tmp/FreeCAD.js --check
 
   # The C shims that get LINKED INTO the app -- gl_legacy_stubs.c above all, which supplies

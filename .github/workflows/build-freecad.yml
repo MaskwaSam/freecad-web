@@ -39,6 +39,7 @@ on:
     paths:
       - '.github/workflows/build-freecad.yml'
       - 'patches/freecad.patch'
+      - 'patches/qt-*.patch'
       - 'patches/freecad.version'
       - 'patches/apply.sh'
       - 'toolchain/**'
@@ -116,7 +117,7 @@ jobs:
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: qt/6.11.2/wasm_mt_weh
-          key: ${{ env.QT_KEY }}
+          key: ${{ env.QT_KEY }}-${{ hashFiles('patches/qt-*.patch') }}
 
       # Both caches are produced by other workflows. If either is missing, say which and
       # which workflow makes it, instead of failing 20 minutes later inside cmake.

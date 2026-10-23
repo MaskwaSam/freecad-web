@@ -36,3 +36,11 @@ if sys.platform == "emscripten":
         fcweb_requests.install_import_hook()
     except Exception as _e:
         print("[fcweb] sitecustomize: requests hook not installed: %r" % (_e,))
+
+    # Draft loads on demand, after the GUI has initialized. Install a targeted
+    # loader hook rather than importing Draft during interpreter startup.
+    try:
+        import fcweb_draft_tracker_fix
+        fcweb_draft_tracker_fix.install()
+    except Exception as _e:
+        print("[fcweb] sitecustomize: Draft tracker repair not installed: %r" % (_e,))

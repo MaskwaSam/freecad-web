@@ -98,6 +98,22 @@ import pathlib
 
 PATCHES = [
     (
+        'Qt accessibility: preserve the EM_VAL return width',
+        # Qt 6.11.2's EM_JS import is `jj` on wasm64. The undefined-handle
+        # argument is already a BigInt, but Emval.toHandle returns a Number.
+        # Returning that Number to i64 throws while linking accessibility DOM
+        # elements. Match the argument's width; wasm32 keeps its Number ABI.
+        # Keep this identical to qt-wasm-accessibility-emval.patch so a future
+        # Qt rebuild is recognized as already repaired after minification.
+        'function getActiveElement_js(undefHandle){var activeEl=document.activeElement;'
+        'while(true){if(!activeEl){return undefHandle}else if(activeEl.shadowRoot){'
+        'activeEl=activeEl.shadowRoot.activeElement}else{return Emval.toHandle(activeEl)}}}',
+        'function getActiveElement_js(undefHandle){var activeEl=document.activeElement;'
+        'while(true){if(!activeEl){return undefHandle}else if(activeEl.shadowRoot){'
+        'activeEl=activeEl.shadowRoot.activeElement}else{var handle=Emval.toHandle(activeEl);'
+        'return typeof undefHandle=="bigint"?BigInt(handle):handle}}}',
+    ),
+    (
         'IDBFS persist failure reports its reason, not [object Object]',
         # The pre-js handler concatenated the error:
         #     err('[pre-gui] IDBFS persist failed: ' + e)
@@ -1865,6 +1881,10 @@ PATCHES += [
 def check_postconditions(text):
     """Return a list of (what, why, count) for every invariant the file violates."""
     bad = []
+    if 'return Emval.toHandle(activeEl)' in text:
+        bad.append(('Qt accessibility returns an unconverted EM_VAL',
+                    'a Number returned to the wasm64 i64 import throws during accessibility updates',
+                    text.count('return Emval.toHandle(activeEl)')))
     for t in _TODO_THROWS:
         n = text.count(t)
         if n:
