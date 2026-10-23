@@ -2,14 +2,17 @@
 <!-- Copyright (c) Virtastic -->
 # CAD1 runtime repair, 2026-10-23
 
-The current browser engine exposes two distinct failures. Draft rectangle
+The current browser runtime exposes three distinct failures. Draft rectangle
 cleanup can hide a tracker after `finalize()` has cleared its Coin switch.
 Separately, Qt accessibility's `getActiveElement_js` is a `jj` Wasm import on
 wasm64 but returns the Number produced by `Emval.toHandle`. Returning that value
 to i64 throws `Cannot convert ... to a BigInt` while linking accessibility DOM.
-The rectangle attempt preceded optional screen-reader activation; the two fixes
-do not assert that one failure caused the other or that these alone explain an
-incorrect dimension entered through automation.
+The rectangle attempt preceded optional screen-reader activation. After that
+activation, the page's keyboard forwarder can send a second copy of keys that
+already bubble from an accessibility button to Qt. An actual property edit from
+41 to 40 became 4400: the trace records both synthetic canvas and original
+trusted button keys delivered to the same Qt handler. These findings do not
+establish the cause of the separately observed native pointer memory trap.
 
 ## Repair and scope
 
@@ -21,6 +24,10 @@ incorrect dimension entered through automation.
   the existing undefined-handle argument is BigInt. wasm32 keeps Number returns.
   Focus traversal, shadow DOM traversal, handle ownership and accessibility
   remain enabled. No exception is silenced.
+- The page forwards keys only when their composed event path does not already
+  contain a Qt window. Accessibility controls and direct canvas events keep
+  their original route, while keys outside Qt retain the existing shortcut
+  fallback. The guard neither cancels nor redispatches an original Qt key.
 - `patches/freecad.patch` carries the tracker guards into future engine builds.
   `patches/qt-wasm-accessibility-emval.patch` carries the same return-width fix
   into future Qt builds. The current pinned engine can use the two small
@@ -29,6 +36,8 @@ incorrect dimension entered through automation.
 Primary source references:
 [FreeCAD 1.1.3 tracker](https://github.com/FreeCAD/FreeCAD/blob/1.1.3/src/Mod/Draft/draftguitools/gui_trackers.py),
 [Qt 6.11.2 accessibility](https://github.com/qt/qtbase/blob/v6.11.2/src/plugins/platforms/wasm/qwasmaccessibility.cpp).
+Qt registers bubbling keyboard listeners on each
+[Qt window](https://github.com/qt/qtbase/blob/v6.11.2/src/plugins/platforms/wasm/qwasmwindow.cpp).
 
 ## Focused verification
 
@@ -42,16 +51,25 @@ python3 tools/check-every-patch-is-applied.py
 The optional engine argument verifies the observed unpatched `jj` import. The
 test reproduces its Number-to-i64 failure across a real Wasm boundary, checks
 fixed wasm64/wasm32 returns with ordinary, nested-shadow and absent focus, and
-checks repeated tracker cleanup plus preservation of genuine errors. CI sets
-up Node explicitly for the Wasm fixture. These checks are separate from the
-student keyboard workflow.
+checks repeated tracker cleanup plus preservation of genuine errors. Routing
+checks exercise the recorded button case, keydown/up, direct canvas and shadow
+paths, text focus, synthetic recursion, and the outside-Qt shortcut fallback.
+The routing test fails against the previous page with two deliveries instead
+of one. CI sets up Node explicitly for these checks. They remain separate from
+the student keyboard workflow.
 
-For a staged browser check, use a **new isolated browser context** with service
-workers blocked. Serve the patched page, patched JS, `am/sitecustomize.py` and
+For a staged browser check, use a **new isolated browser context**. Serve the
+patched page, patched JS, `am/sitecustomize.py` and
 `am/fcweb_draft_tracker_fix.py` together from one origin. Verify boot, the Draft
 repair log, actual numeric rectangle coordinates and dimensions, outline,
 save/download/reopen, screen-reader activation, the resulting accessible
-controls, focus/property edits and absence of runtime errors. Preserve existing
+controls, focus/property edits and absence of runtime errors. In particular,
+repeat two property edits with accessibility enabled, commit the second edit,
+click the view without an intervening model probe, and only then read the exact
+dimension. Preserve original key and pointer traces. A negative pointer-only
+test does not clear an edit-triggered crash. Route-based previews must retain
+origin-isolation headers and return successful asset statuses; a live gate
+uses normal service workers with no response interception. Preserve existing
 student IndexedDB and cached projects.
 
 ## Deployment and future rebuild order

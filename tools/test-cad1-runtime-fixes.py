@@ -229,6 +229,62 @@ class AccessibilityTests(unittest.TestCase):
         self.assertTrue(any("accessibility" in item[0] for item in bad))
 
 
+KEYBOARD_TEST = r'''
+const assert = require('node:assert/strict');
+const vm = require('node:vm');
+const source = JSON.parse(require('node:fs').readFileSync(0,'utf8')).source;
+let forwarded = 0;
+const canvas = {dispatchEvent() { forwarded++; }};
+const context = {document:{activeElement:null}, KeyboardEvent:class {constructor(type, properties) {this.type=type;Object.assign(this,properties);}}};
+vm.createContext(context);
+vm.runInContext(source,context);
+// Keep the actual routing function, replacing only the destination lookup.
+context.qtCanvas=()=>canvas;
+const qtWindow={classList:{contains(name){return name==='qt-window';}}};
+const body={tagName:'BODY'};
+const button={tagName:'BUTTON',isContentEditable:false};
+function key(active,path,properties={}) {
+  context.document.activeElement=active;
+  const event={isTrusted:true,key:'4',type:'keydown',cancelable:true,composedPath:()=>path,
+               preventDefault(){this.defaultPrevented=true;},...properties};
+  const before=forwarded;
+  context.forwardKeyToQt(event);
+  return {copies:forwarded-before,event};
+}
+// The recorded failure: a11y button focus, original trusted event already bubbles
+// through Qt's window. One natural delivery plus zero forwarded copies is one key.
+assert.equal(key(button,[button,qtWindow,body]).copies+1,1);
+assert.equal(key(button,[button,qtWindow,body],{type:'keyup'}).copies,0);
+assert.equal(key(body,[canvas,qtWindow,body]).copies+1,1);
+// Retargeting at an open shadow host must still use the composed inner path.
+assert.equal(key({shadowRoot:{activeElement:button}},[button,qtWindow,body]).copies,0);
+// The established BODY shortcut fallback must still reach Qt exactly once.
+assert.equal(key(body,[body]).copies,1);
+const shortcut=key(body,[body],{key:'n',ctrlKey:true});
+assert.equal(shortcut.copies,1);
+assert.equal(shortcut.event.defaultPrevented,true);
+// Text editing and the synthetic recursion guard retain their existing behavior.
+assert.equal(key({tagName:'INPUT'},[body]).copies,0);
+assert.equal(key({shadowRoot:{activeElement:{tagName:'INPUT'}}},[qtWindow,body]).copies+1,1);
+assert.equal(key({isContentEditable:true},[body]).copies,0);
+assert.equal(key(body,[body],{isTrusted:false}).copies,0);
+console.log(JSON.stringify({status:'PASS',keyboard_routing_checks:10}));
+'''
+
+
+class KeyboardRoutingTests(unittest.TestCase):
+    def test_natural_qt_delivery_is_not_forwarded_but_body_shortcuts_are(self):
+        page = (ROOT / "play-gui/freecad-gui.html").read_text()
+        start = page.index("  function qtCanvas(){")
+        end = page.index("  window.addEventListener('keydown', forwardKeyToQt", start)
+        result = subprocess.run(["node", "-e", KEYBOARD_TEST],
+                                input=json.dumps({"source":page[start:end]}),
+                                text=True, capture_output=True, check=True)
+        report = json.loads(result.stdout)
+        self.assertEqual(report["keyboard_routing_checks"], 10)
+        print(result.stdout.strip())
+
+
 class RuntimeWiringTests(unittest.TestCase):
     def test_overlay_is_fetched_and_installed_before_draft_import(self):
         page = (ROOT / "play-gui/freecad-gui.html").read_text()

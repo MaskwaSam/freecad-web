@@ -6626,6 +6626,14 @@ window.fcRunPy = fcRunPy;
       if(k==='s'||k==='o') return;          // handled by the shell above
     }
     if(textHasFocus()) return;
+    // Qt listens on each .qt-window, including its accessibility controls. Their
+    // original keys already bubble to Qt; forwarding would deliver a second key.
+    // Accessibility can leave a button focused while a property editor is open,
+    // so checking text focus alone is insufficient.
+    var path=e.composedPath();
+    for(var i=0;i<path.length;i++){
+      if(path[i].classList && path[i].classList.contains('qt-window')) return;
+    }
     var c=qtCanvas(); if(!c) return;
     c.dispatchEvent(new KeyboardEvent(e.type, {
       key:e.key, code:e.code, keyCode:e.keyCode, which:e.which, location:e.location,
