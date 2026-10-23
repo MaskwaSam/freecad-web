@@ -45,6 +45,8 @@ on:
       - 'toolchain/**'
       - 'tools/check-patch-applies.py'
       - 'tools/fetch-freecad-submodules.sh'
+      - 'tools/fetch-pinned-freecad.py'
+      - 'tools/native-source-pins.json'
   workflow_dispatch:
     inputs:
       runner:
@@ -276,16 +278,7 @@ jobs:
 
       - name: Fetch FreeCAD ${{ steps.ver.outputs.tag }}
         run: |
-          set -e
-          if [ -e deps/src/freecad/CMakeLists.txt ]; then
-            echo "  freecad: present"
-          else
-            mkdir -p deps/src/freecad
-            curl -fsSL -o /tmp/freecad.tar.gz \
-              "https://github.com/FreeCAD/FreeCAD/archive/refs/tags/${{ steps.ver.outputs.tag }}.tar.gz"
-            tar xzf /tmp/freecad.tar.gz -C deps/src/freecad --strip-components=1
-          fi
-          ls deps/src/freecad/CMakeLists.txt
+          python3 tools/fetch-pinned-freecad.py freecad
 
       # Before patch(1) gets a chance to be lenient about it. GNU patch and the msys
       # patch(1) the port is generated with disagree on line endings, so "it applied on the

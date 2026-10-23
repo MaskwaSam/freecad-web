@@ -40,13 +40,17 @@ on:
       - 'patches/qt-*.patch'
   workflow_dispatch:
     inputs:
+      rebuild:
+        description: "Require a clean native rebuild (mandatory for hosted diagnostic artifacts)"
+        type: boolean
+        default: true
       runner:
         description: "Where to build"
         type: choice
         default: vps
         options:
           - vps
-          - ubuntu-latest
+          - hosted
 
 permissions:
   contents: read
@@ -61,6 +65,16 @@ jobs:
     timeout-minutes: 350
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Require clean hosted native diagnostic contract
+        if: ${{ inputs.runner == 'hosted' }}
+        run: python3 tools/native-input-bundle.py begin qt
+
+      - name: Host Python 3.13 for matching aqt dependency resolution
+        if: ${{ inputs.runner == 'hosted' }}
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.13'
+
       # HOSTED RUNNERS ONLY. On a throwaway CI image these trees are reclaimable space; on the
       # OVH box they are somebody's filesystem, and that box also runs another product's
       # database. The `|| true` here would have swallowed the mistake rather than prevented
@@ -97,6 +111,7 @@ jobs:
           echo "  toolchain ok: $(cmake --version | head -1), $(ninja --version)"
 
       - name: Cache the built Qt
+        if: ${{ inputs.runner != 'hosted' && !inputs.rebuild }}
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: qt/6.11.2/wasm_mt_weh
@@ -104,21 +119,8 @@ jobs:
 
       - name: Install emsdk 6.0.9
         run: |
-          set -e
-          git clone --depth 1 https://github.com/emscripten-core/emsdk.git
-          cd emsdk && ./emsdk install 6.0.9 && ./emsdk activate 6.0.9
-          . ./emsdk_env.sh && emcc --version | head -1
+          python3 tools/native-toolchain-inputs.py emsdk
 
-      # Everything below logs to /tmp/qtlogs and is uploaded as an ARTIFACT. GitHub's job-log
-      # API has returned 404 for this repo for the whole session, so the normal way of finding
-      # out why a step failed is unavailable -- but the artifacts API works. Routing the
-      # diagnostics through it is the difference between a debuggable failure and a dead end.
-      # The host Qt's TOOLS are dynamically linked desktop binaries, so they need desktop
-      # runtime libraries even though nothing here draws anything. Diagnosed from run
-      # 32040905674, which configured fine and then died 731 targets into the build:
-      #   qsb: error while loading shared libraries: libEGL.so.1: cannot open shared object file
-      # A bare ubuntu-latest runner has no libEGL. qsb only compiles shaders offline, but it
-      # links against Qt Gui, so the .so has to be present regardless.
       - name: Host Qt runtime libraries
         run: |
           sudo apt-get update -qq
@@ -144,45 +146,12 @@ jobs:
       # roughly an hour and a half. It only has to match the target VERSION.
       - name: Host Qt 6.11.2 (prebuilt — it never touches wasm)
         run: |
-          set -o pipefail
-          rc=0
-          # The host needs every module whose TOOLS the cross-build runs, not just qtbase.
-          # Diagnosed from run 32040220795: configure died with
-          #   "Qt6ShaderToolsTools package could not be found ... build and install the host
-          #    ShaderTools module"  (qtshadertools/tools/qsb/CMakeLists.txt)
-          # because qtdeclarative depends on qtshadertools and its qsb shader compiler has to
-          # run ON THE HOST during the wasm build. The bare linux_gcc_64 package does not
-          # include it. Mirror the target submodule list here.
-          # --break-system-packages: this workflow used to run on a GitHub-hosted
-          # runner, where pip installs freely. On the VPS the system Python is
-          # PEP 668 externally-managed and the bare install dies with
-          # "error: externally-managed-environment" -- which is what killed run
-          # 32236578889 three minutes in, before Qt was configured at all.
-          { { python3 -m pip install --quiet --break-system-packages aqtinstall 2>/dev/null || python3 -m pip install --quiet aqtinstall; } &&
-            # ONLY qtshadertools. Run 32040636843 established that qtdeclarative, qtsvg and
-            # qttools are not separate aqtinstall modules for 6.11.2 -- they ship inside the
-            # base linux_gcc_64 package, and naming them makes aqt fail outright:
-            #   "The packages ['qtdeclarative', 'qtsvg', 'qttools'] were not found"
-            # qtshadertools IS separate, and is the one the cross-build actually needs.
-            python3 -m aqt install-qt linux desktop 6.11.2 linux_gcc_64 \
-              -m qtshadertools -O "$PWD/qt-host"
-          } > /tmp/qtlogs/01-host-qt.txt 2>&1 || rc=$?
-          echo "  aqt exit=$rc"
-          find "$PWD/qt-host" -maxdepth 3 -name qmake >> /tmp/qtlogs/01-host-qt.txt 2>&1 || true
-          tail -25 /tmp/qtlogs/01-host-qt.txt
-          exit $rc
+          python3 tools/native-toolchain-inputs.py host-qt
 
       - name: Qt sources
         run: |
-          set -o pipefail
-          rc=0
-          { curl -fsSL -o /tmp/qt.tar.xz \
-              https://download.qt.io/archive/qt/6.11/6.11.2/single/qt-everywhere-src-6.11.2.tar.xz &&
-            mkdir -p qt-src && tar xJf /tmp/qt.tar.xz -C qt-src --strip-components=1
-          } > /tmp/qtlogs/02-src.txt 2>&1 || rc=$?
-          ls qt-src/configure >> /tmp/qtlogs/02-src.txt 2>&1 || true
-          echo "  src exit=$rc"; tail -10 /tmp/qtlogs/02-src.txt
-          [ "$rc" = 0 ] || exit $rc
+          set -euo pipefail
+          python3 tools/native-toolchain-inputs.py qt-source
 
           # Qt is the one source tree apply.sh does not reach (it lives in qt-src/, not
           # deps/src/), so its patch is applied here. Dry-run first with zero fuzz: a hunk
@@ -305,6 +274,22 @@ jobs:
 
       # THE POINT OF ALL THE ABOVE. The jobs/logs API 404s for this repo; the artifacts API
       # works. So the diagnostics leave by the door that is actually open.
+      - name: Package complete qt native input with source/hash manifest
+        if: ${{ success() && inputs.runner == 'hosted' }}
+        run: |
+          python3 tools/native-toolchain-inputs.py environment
+          python3 tools/native-input-bundle.py pack qt
+
+      - name: Upload immutable qt native input handoff
+        if: ${{ success() && inputs.runner == 'hosted' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: native-input-qt-${{ github.run_id }}
+          path: native-inputs/qt/
+          compression-level: 0
+          retention-days: 7
+          if-no-files-found: error
+
       - name: Upload diagnostics
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
