@@ -52,7 +52,7 @@ RECIPE_GLOBS = ['tools/**', 'toolchain/**', 'patches/**', '.github/workflows/**'
 RESERVE_BYTES = 1024 ** 3
 PYTHON_BUILD_DISTRIBUTIONS = ['pip', 'meson', 'ninja', 'pybind11', 'setuptools', 'wheel', 'cppy', 'cython', 'swig']
 # One reviewed CPP/Qt consumer bridge: output retention and Python-only Pivy
-# Freetype discovery/order. The current global conservative fingerprint changes;
+# Freetype discovery/order and static Ifc wrapper. The current global conservative fingerprint changes;
 # original CPP/Qt manifests/output bytes and their executed build paths are retained.
 # These boundaries come from code, never
 # from its separately retained evidence policy. Existing recipe globs stay intact.
@@ -61,7 +61,7 @@ COMPATIBILITY_SOURCE = 'a2649e165b168bfbec16827fc5379e9e712316ed'
 COMPATIBILITY_RECIPE = '812765ae50b7868410a2376b99fc8332ed8f30abc29d21e2f0222446fb1b67f8'
 COMPATIBILITY_GIT_TREE = '4764b677272ad3fb236358696e6518b85f45ab2d301ce5d6bd6e81f35fd014a5'
 COMPATIBILITY_RUNS = {'cpp': '40016791813', 'qt': '40016804746'}
-COMPATIBILITY_RECIPE_PATHS = {'tools/native-input-bundle.py', '.github/workflows/link-freecad.yml', 'configure-pivy-weh.sh', '.github/workflows/build-python-deps.yml'}
+COMPATIBILITY_RECIPE_PATHS = {'tools/native-input-bundle.py', '.github/workflows/link-freecad.yml', 'configure-pivy-weh.sh', '.github/workflows/build-python-deps.yml', 'configure-ifcopenshell-weh.sh'}
 COMPATIBILITY_GIT_PATHS = COMPATIBILITY_RECIPE_PATHS | {
     COMPATIBILITY_FILE, 'play-gui/am/fcweb_share.py', 'play-gui/freecad-gui.html'}
 

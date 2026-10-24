@@ -1,6 +1,6 @@
 {
   "format": 1,
-  "purpose": "Retained evidence for exact CPP/Qt inputs under reviewed output retention and Python-consumer-only Pivy Freetype mapping/order. Original producer manifest recipe values and output bytes are retained unchanged; their executed build paths are unchanged. The global conservative fingerprint changes; Python rebuilds all lanes under this new recipe.",
+  "purpose": "Retained evidence for exact original CPP/Qt inputs under reviewed output retention and Python-consumer-only Pivy Freetype mapping/order plus real static Ifc wrapper/early object gate. Original producer manifest recipe values and artifact bytes, and their executed CPP/Qt build paths, are unchanged. The conservative global fingerprint changes; fresh Python rebuilds all lanes under the complete new recipe.",
   "old_recipe_sha256": "812765ae50b7868410a2376b99fc8332ed8f30abc29d21e2f0222446fb1b67f8",
   "old_recipe_files": {
     ".github/workflows/box-diagnostics.yml": "25cb57e6f95a2541b360371f10cf0418a272a50b6e33c4d6ec4764940b09515e",
@@ -208,7 +208,7 @@
     "tools/wasm-indirect-calls.py": "5356250c1b2e3462332f66e30b2ead24c775f9540962ae779f0735dfac0c5e91",
     "tools/wasm-table-arity.py": "8799ceb8f82c100736132afedd29116e04ee0e0beaebad54d6406e48c1d0a680"
   },
-  "new_recipe_sha256": "072c93f29261ee86e19b49f0fdd1bd52c0eaa1cffd28a78f5c71537c8ed7ad05",
+  "new_recipe_sha256": "79d786cd5caed55e08554eaff4c78bcd24d4c7fe7ca17a61f50f1861968220aa",
   "new_recipe_files": {
     ".github/workflows/box-diagnostics.yml": "25cb57e6f95a2541b360371f10cf0418a272a50b6e33c4d6ec4764940b09515e",
     ".github/workflows/box-maintenance.yml": "4b4be9fdc6fce3f3f9b246e1270fddc25ff873d49c4c912c0300ef0a946bf856",
@@ -217,7 +217,7 @@
     ".github/workflows/build-deps.yml": "23e66dda043d4886e84080d1fb2d8d07547eb95fa70b4b6ee69af1f6c8cd033a",
     ".github/workflows/build-freecad.yml": "429a723ce0aaf000331404c6ddac13cc1bfb4d8eda024b722d8a205633291bc2",
     ".github/workflows/build-gmsh.yml": "1d062ca7dfe38a2ae22c284ea16f51220b296c4c88cd2960a5cdeb6fc137bed5",
-    ".github/workflows/build-python-deps.yml": "0fcec4420051e0499460b54b2c18b927d5f55c4d647563c7fdaf8289b36c449f",
+    ".github/workflows/build-python-deps.yml": "136025cffddb81beed37739d2948f147d9c21f126333632b775969140a8f2dc2",
     ".github/workflows/build-qt-wasm.yml": "2a51d7a2039f01a9d961f0a408bba854b776ec1ddbd9da51bd8dfbb4c4957819",
     ".github/workflows/cache-rules.yml": "ae492415bc493eda53f9ffd1be61925151492bb6ec0e4b87f531e0f4fc09f02a",
     ".github/workflows/ci.yml": "9e84a5ca4747f99d97e6dd9e99bd98e8dc9b2904ac5f5bdcd6521729d37734bf",
@@ -257,7 +257,7 @@
     "configure-gmsh-weh.sh": "475249f86bf93261d2d139e8bde3d05182dbfdd11f18a2ad209f0f1e755dc9ec",
     "configure-gui-weh.sh": "bc7cebe0e74eb675cb9126d45ee0c789e9138e0d8fa9ed6351c11a1a666667cf",
     "configure-hdf5.sh": "ae7f13c262843bcde1f83f6ecd3a56a8f6a769766705fff47802da7dbb70b98d",
-    "configure-ifcopenshell-weh.sh": "25edb3c44cec10f816e6069918879ad3a9bd0652711b23aeb7c7ce9611837f3f",
+    "configure-ifcopenshell-weh.sh": "c0243f044314a097550ae1c716f53a042b99ec9758bd62374f38a79a3642e615",
     "configure-kiwisolver-weh.sh": "08e23d6893eef5f6d38f274f8cf7af68506361c57f056c8a50447d3c21905059",
     "configure-matplotlib-weh.sh": "e170f583a1bb2fe23baa5241642f0df594f14c14a7119ef3b12c708b4188396a",
     "configure-numpy.sh": "dfcc35ca53aee88f3f093bc2f100be3f8eb21561cc6d1fac9baebe17f93e2eb3",
@@ -390,7 +390,7 @@
     "tools/gen-dialog-shims.py": "733fcfe3d60e887b3f9cbf7152708bcbda822da5467a77fc61a864ae34e82a34",
     "tools/gen-gl-compat.py": "32bd0985e5ad32402f231701eda82d61ef883c1e46fd600745d25cad51c94ae1",
     "tools/gl-noop-inventory.py": "62e573d267e5ed4894ba391694950f5d923608267f1a6673a6a868d1a652e61f",
-    "tools/native-input-bundle.py": "072904b70af94924d27a768d655343dada48f0222506719c30832f270c363e7f",
+    "tools/native-input-bundle.py": "b71613f0d7b17a24ecdbab8e23a967ff0fa83f827d98a4cee9cf9c2b1a168596",
     "tools/native-source-pins.json": "773b30f7af9c0fe15e3f53c2126a3b37e5eef81412533ad4b079805d94a36884",
     "tools/native-toolchain-inputs.py": "9e435afe3f30ca4f75006cd94cac2a8f62d30718c0fe644f4f803459e07be53e",
     "tools/native-toolchain-pins.json": "84b2cf9ebf0034b65bcd7a8a8473d9d4a93170ad27b92e44c510429c0733854c",
@@ -418,11 +418,15 @@
   "reviewed_recipe_changes": {
     ".github/workflows/build-python-deps.yml": {
       "before": "a3c15c50fb90025cb350850d1e71f628e54bc31608612e6aa8c7b3ac1d911ad1",
-      "after": "0fcec4420051e0499460b54b2c18b927d5f55c4d647563c7fdaf8289b36c449f"
+      "after": "136025cffddb81beed37739d2948f147d9c21f126333632b775969140a8f2dc2"
     },
     ".github/workflows/link-freecad.yml": {
       "before": "c723a3da347bd799a0f9c81098c52cbbec6bb1f0991dfda19e7c7d92eb174380",
       "after": "822a083b3c9ed5e0b60fe54c290159e5aee29795a8faff1d20fda1f020f1c37d"
+    },
+    "configure-ifcopenshell-weh.sh": {
+      "before": "25edb3c44cec10f816e6069918879ad3a9bd0652711b23aeb7c7ce9611837f3f",
+      "after": "c0243f044314a097550ae1c716f53a042b99ec9758bd62374f38a79a3642e615"
     },
     "configure-pivy-weh.sh": {
       "before": "e3b3d8144d00bdddc49241e8ac0a1a5ad88be3912d4df0b4131f65c3a2fbd782",
@@ -430,7 +434,7 @@
     },
     "tools/native-input-bundle.py": {
       "before": "1e26f7ad244fea13eb30937facb0a627324e0c24a1e20bb36d03cfa38cb5145b",
-      "after": "072904b70af94924d27a768d655343dada48f0222506719c30832f270c363e7f"
+      "after": "b71613f0d7b17a24ecdbab8e23a967ff0fa83f827d98a4cee9cf9c2b1a168596"
     }
   },
   "old_git_tree": {
