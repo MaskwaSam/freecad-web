@@ -1,0 +1,37 @@
+{
+  "freecad": {
+    "version": "1.1.3",
+    "commit": "145529fe741292ff0b3977a01195bf0247425794",
+    "url": "https://codeload.github.com/FreeCAD/FreeCAD/tar.gz/145529fe741292ff0b3977a01195bf0247425794",
+    "sha256": "5d6ead428d5c55f4a42f5305d41cd1a653e20c0a46cb352b867f5d81c64a19a5",
+    "bytes": 91804681,
+    "marker": "CMakeLists.txt"
+  },
+  "gsl": {
+    "commit": "a3534567187d2edc428efd3f13466ff75fe5805c",
+    "url": "https://codeload.github.com/microsoft/GSL/tar.gz/a3534567187d2edc428efd3f13466ff75fe5805c",
+    "sha256": "c0379cff645543d5076216bc5b22a3426de57796fc043527a24a6e494628d8a6",
+    "bytes": 55940,
+    "marker": "include/gsl/gsl",
+    "subdir": "src/3rdParty/GSL",
+    "choice": "Preserve existing v4.0.0 recipe, resolved to its commit; FreeCAD's GSL gitlink is a different version."
+  },
+  "ondsel": {
+    "commit": "30e9b64e8bf881d438d4b88834f9ba3674865418",
+    "url": "https://codeload.github.com/FreeCAD/OndselSolver/tar.gz/30e9b64e8bf881d438d4b88834f9ba3674865418",
+    "sha256": "77646ca7d8cbc6dc4e8304439be2ff2b9aecf397e6349e63b3b06e65dfed79c3",
+    "bytes": 4667790,
+    "marker": "CMakeLists.txt",
+    "subdir": "src/3rdParty/OndselSolver",
+    "choice": "Exact FreeCAD1.1.3 release gitlink, replacing the moving main branch."
+  },
+  "addonmanager": {
+    "commit": "937b6877239dc78ef59eeefe8099e5f14243eda1",
+    "url": "https://codeload.github.com/FreeCAD/AddonManager/tar.gz/937b6877239dc78ef59eeefe8099e5f14243eda1",
+    "sha256": "70b2fa7f3c58c0ea5be830de90d33369670ee6658f13aeb7684f1ea478528178",
+    "bytes": 849951,
+    "marker": "AddonManager.py",
+    "subdir": "src/Mod/AddonManager",
+    "choice": "Preserve existing exact release gitlink."
+  }
+}

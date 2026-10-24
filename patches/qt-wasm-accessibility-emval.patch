@@ -1,0 +1,14 @@
+--- a/qtbase/src/plugins/platforms/wasm/qwasmaccessibility.cpp
++++ b/qtbase/src/plugins/platforms/wasm/qwasmaccessibility.cpp
+@@ -31,7 +31,10 @@
+         } else if (activeEl.shadowRoot) {
+             activeEl = activeEl.shadowRoot.activeElement;
+         } else {
+-            return Emval.toHandle(activeEl);
++            // EM_VAL is pointer-sized: wasm64 imports return i64/BigInt.
++            // The undefined argument already has the correct ABI width.
++            var handle = Emval.toHandle(activeEl);
++            return typeof undefHandle == "bigint" ? BigInt(handle) : handle;
+         }
+     }
+ })

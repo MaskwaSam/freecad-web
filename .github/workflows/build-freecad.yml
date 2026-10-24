@@ -39,11 +39,14 @@ on:
     paths:
       - '.github/workflows/build-freecad.yml'
       - 'patches/freecad.patch'
+      - 'patches/qt-*.patch'
       - 'patches/freecad.version'
       - 'patches/apply.sh'
       - 'toolchain/**'
       - 'tools/check-patch-applies.py'
       - 'tools/fetch-freecad-submodules.sh'
+      - 'tools/fetch-pinned-freecad.py'
+      - 'tools/native-source-pins.json'
   workflow_dispatch:
     inputs:
       runner:
@@ -116,7 +119,7 @@ jobs:
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: qt/6.11.2/wasm_mt_weh
-          key: ${{ env.QT_KEY }}
+          key: ${{ env.QT_KEY }}-${{ hashFiles('patches/qt-*.patch') }}
 
       # Both caches are produced by other workflows. If either is missing, say which and
       # which workflow makes it, instead of failing 20 minutes later inside cmake.
@@ -275,16 +278,7 @@ jobs:
 
       - name: Fetch FreeCAD ${{ steps.ver.outputs.tag }}
         run: |
-          set -e
-          if [ -e deps/src/freecad/CMakeLists.txt ]; then
-            echo "  freecad: present"
-          else
-            mkdir -p deps/src/freecad
-            curl -fsSL -o /tmp/freecad.tar.gz \
-              "https://github.com/FreeCAD/FreeCAD/archive/refs/tags/${{ steps.ver.outputs.tag }}.tar.gz"
-            tar xzf /tmp/freecad.tar.gz -C deps/src/freecad --strip-components=1
-          fi
-          ls deps/src/freecad/CMakeLists.txt
+          python3 tools/fetch-pinned-freecad.py freecad
 
       # Before patch(1) gets a chance to be lenient about it. GNU patch and the msys
       # patch(1) the port is generated with disagree on line endings, so "it applied on the

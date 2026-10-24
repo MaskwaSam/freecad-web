@@ -76,6 +76,7 @@ python3 "$ROOT/tools/patch-ifcopenshell.py" "$SRC"
 emcmake cmake -S "$SRC/cmake" -B "$BUILD" -G Ninja \
   -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
   -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_PROJECT_INCLUDE_BEFORE="$ROOT/force-static.cmake" \
   -DWASM_BUILD=ON \
   -DBUILD_SHARED_LIBS=OFF \
   -DBUILD_IFCGEOM=ON \
@@ -125,6 +126,26 @@ if [ -z "$WRAP" ]; then
     exit 1
 fi
 
+# BUILD_SHARED_LIBS=OFF does not change SWIG's explicit/default MODULE target.
+# force-static.cmake makes it an archive, even if Python gives it a .so suffix.
+# Reject a renamed linked module or host/empty archive here, before the long
+# independent PySide lane, then apply the unchanged wasm64 object checker.
+python3 - "$WRAP" "$ROOT/tools/check-archive-target.py" "$ROOT/emsdk/upstream/bin/llvm-ar" <<'PY_ARCHIVE'
+import sys
+sys.dont_write_bytecode = True
+from pathlib import Path
+import runpy
+import subprocess
+raw = Path(sys.argv[1]).read_bytes()
+checker = runpy.run_path(sys.argv[2])
+members = checker['ar_members'](raw)
+if not raw.startswith(b'!<arch>\n') or not members:
+    raise SystemExit('Ifc wrapper must be a real static archive containing Wasm objects: ' + sys.argv[1])
+if len(subprocess.check_output([sys.argv[3], 't', sys.argv[1]], text=True).splitlines()) != len(members):
+    raise SystemExit('Ifc wrapper archive contains a non-Wasm object: ' + sys.argv[1])
+PY_ARCHIVE
+python3 "$ROOT/tools/check-archive-target.py" "$WRAP"
+
 mkdir -p "$DW/lib/ifc-mod"
 cp "$WRAP" "$DW/lib/ifc-mod/lib_ifcopenshell_wrapper.a"
 # EVERY archive the build produced, not an enumerated subset. The list this replaces --
@@ -140,10 +161,10 @@ for a in $(find "$BUILD" -name '*.a' | sort); do
     cp "$a" "$DW/lib/ifc-mod/"
 done
 # v1 staged an enumerated subset; v2 stages every archive the build produced. v3 is the
-# first build with patches/ifcopenshell-schema-code-size.patch, which compiles the generated
-# per-schema tables at -Oz: the marker is what makes the lane rebuild rather than reuse the
-# archives it already has, since the guard in build-python-deps.yml skips on the marker.
-echo 3 > "$DW/lib/ifc-mod/.staged"
+# first build with patches/ifcopenshell-schema-code-size.patch. v4 requires a real static
+# SWIG wrapper archive and the immediate unchanged wasm64 checker. Bump the marker so
+# older renamed shared modules cannot satisfy the non-hosted cache guard.
+echo 4 > "$DW/lib/ifc-mod/.staged"
 echo "IfcOpenShell staged to $DW/lib/ifc-mod:"
 ls -la "$DW/lib/ifc-mod" | sed 's/^/    /'
 "$NM" "$WRAP" 2>/dev/null | grep ' T PyInit' | sed 's/^/  /' || true

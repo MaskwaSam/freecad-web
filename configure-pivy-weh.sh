@@ -27,6 +27,21 @@ fi
 # shellcheck disable=SC1091
 source "$ROOT/toolchain/env.sh"
 
+# Coin's installed config requires Freetype. The Python matplotlib lane already
+# stages this exact target header/archive pair, also used by the final GUI link.
+# A fresh hosted SDK has no inherited C++ producer port cache; never discover a
+# host library or materialise a second Freetype variant to satisfy this configure.
+FT_INC="$DW/include/freetype2"
+FT_LIB="$DW/lib/mpl-mod/libfreetype.a"
+[ -s "$FT_INC/ft2build.h" ] && [ -s "$FT_INC/freetype/freetype.h" ] && [ -s "$FT_LIB" ] || {
+    echo "!! staged target Freetype headers/archive missing -- run configure-matplotlib-weh.sh first" >&2
+    exit 1
+}
+if head -c 7 "$FT_LIB" | grep -q '!<thin'; then
+    echo "!! $FT_LIB is a thin archive -- restage matplotlib's self-contained libraries" >&2
+    exit 1
+fi
+
 CPY="$ROOT/deps/src/cpython"
 PYMT="$CPY/builddir/emscripten-mt"
 
@@ -105,6 +120,9 @@ emcmake cmake -S "$SRC" -B build-pivy-wasm -G Ninja \
     -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH \
     -DCOIN3D_INCLUDE_DIRS="$DW/include" \
     -DCOIN3D_LIBRARIES="$DW/lib/libCoin.a" \
+    -DFREETYPE_INCLUDE_DIR_ft2build="$FT_INC" \
+    -DFREETYPE_INCLUDE_DIR_freetype2="$FT_INC" \
+    -DFREETYPE_LIBRARY="$FT_LIB" \
     -DPython_EXECUTABLE="$CPY/builddir/build/python3-native" \
     -DPython_INCLUDE_DIR="$PYINC" \
     -DPython_LIBRARY="$PYMT/libpython3.13.a" \
