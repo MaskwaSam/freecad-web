@@ -220,7 +220,7 @@
     "tools/wasm-indirect-calls.py": "5356250c1b2e3462332f66e30b2ead24c775f9540962ae779f0735dfac0c5e91",
     "tools/wasm-table-arity.py": "8799ceb8f82c100736132afedd29116e04ee0e0beaebad54d6406e48c1d0a680"
   },
-  "new_recipe_sha256": "67d0019bcb18b5e8739b48be9481713124f91d53bc40a90a8f9d9573b03665d3",
+  "new_recipe_sha256": "c7d4e0d6073004ef645bb89a3ac28f48a5ac3cff824b0a25d2879018b4d911b7",
   "new_recipe_files": {
     ".github/workflows/box-diagnostics.yml": "25cb57e6f95a2541b360371f10cf0418a272a50b6e33c4d6ec4764940b09515e",
     ".github/workflows/box-maintenance.yml": "4b4be9fdc6fce3f3f9b246e1270fddc25ff873d49c4c912c0300ef0a946bf856",
@@ -235,7 +235,7 @@
     ".github/workflows/ci.yml": "9e84a5ca4747f99d97e6dd9e99bd98e8dc9b2904ac5f5bdcd6521729d37734bf",
     ".github/workflows/deploy-ovh.yml": "2d717e5b16d98315544657f21dc092e7053c6d2a306288b3b10b47315ed30412",
     ".github/workflows/dns.yml": "7b5d97dfa0a8dca9029c7606372fee91674a272eeb72c8efa124e6e384a912b8",
-    ".github/workflows/link-freecad.yml": "d793e050182663f540af67766ab13f96db84427a429417d701960ffd419c19d3",
+    ".github/workflows/link-freecad.yml": "99fd91a0f277a7cb38407b1bd8328fedc527be3ecf1147e677af42c7c177054a",
     ".github/workflows/publish-ghcr.yml": "a2a48d2949a6d1e6120a723acc2a011e8a90de2909f23d68ac8387fa18f13c69",
     ".github/workflows/rollback-ovh.yml": "2bd38594bef83cdc732b2843b4830b9c1761d6e5a98862f5637bfa55dab30cb4",
     ".github/workflows/uptime.yml": "e3e9c4b5d12d44256ce0ec8e48af414f1c6c3c5dea8133ed1c64c2553378452f",
@@ -430,7 +430,7 @@
   "reviewed_recipe_changes": {
     ".github/workflows/link-freecad.yml": {
       "before": "822a083b3c9ed5e0b60fe54c290159e5aee29795a8faff1d20fda1f020f1c37d",
-      "after": "d793e050182663f540af67766ab13f96db84427a429417d701960ffd419c19d3"
+      "after": "99fd91a0f277a7cb38407b1bd8328fedc527be3ecf1147e677af42c7c177054a"
     },
     "tools/native-input-bundle.py": {
       "before": "b71613f0d7b17a24ecdbab8e23a967ff0fa83f827d98a4cee9cf9c2b1a168596",
