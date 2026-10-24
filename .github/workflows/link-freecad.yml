@@ -115,18 +115,18 @@ on:
       stop_after:
         description: "stop after this stage"
         type: choice
-        options: [link, configure, compile, install]
-        default: link
+        options: ["link", "configure", "compile", "install"]
+        default: "link"
       runner:
         description: "where to build"
         type: choice
-        options: [builder, vps, hosted]
-        default: builder
+        options: ["builder", "vps", "hosted"]
+        default: "builder"
       ccache:
         description: "compile cache: on, off (baseline), clear (drop it first)"
         type: choice
-        options: [on, off, clear]
-        default: on
+        options: ["on", "off", "clear"]
+        default: "on"
 
 permissions:
   contents: read

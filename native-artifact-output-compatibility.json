@@ -1,6 +1,6 @@
 {
   "format": 1,
-  "purpose": "Retained evidence for exact original CPP/Qt inputs under reviewed output retention and Python-consumer-only Pivy Freetype mapping/order plus real static Ifc wrapper/early object gate. Original producer manifest recipe values and artifact bytes, and their executed CPP/Qt build paths, are unchanged. The conservative global fingerprint changes; fresh Python rebuilds all lanes under the complete new recipe.",
+  "purpose": "Exact original a264 CPP/Qt outputs, admitted only for the reviewed diagnostic consumer. The only added recipe changes since 4d are a quoted link choice and a complete-manifest-bound output bridge. No native build configuration, patch, compiler, or producer bytes change.",
   "old_recipe_sha256": "812765ae50b7868410a2376b99fc8332ed8f30abc29d21e2f0222446fb1b67f8",
   "old_recipe_files": {
     ".github/workflows/box-diagnostics.yml": "25cb57e6f95a2541b360371f10cf0418a272a50b6e33c4d6ec4764940b09515e",
@@ -208,7 +208,7 @@
     "tools/wasm-indirect-calls.py": "5356250c1b2e3462332f66e30b2ead24c775f9540962ae779f0735dfac0c5e91",
     "tools/wasm-table-arity.py": "8799ceb8f82c100736132afedd29116e04ee0e0beaebad54d6406e48c1d0a680"
   },
-  "new_recipe_sha256": "79d786cd5caed55e08554eaff4c78bcd24d4c7fe7ca17a61f50f1861968220aa",
+  "new_recipe_sha256": "d86edffe659d7300ab143564ecc09ef19dec9de2b2d1150beeab8e1731202051",
   "new_recipe_files": {
     ".github/workflows/box-diagnostics.yml": "25cb57e6f95a2541b360371f10cf0418a272a50b6e33c4d6ec4764940b09515e",
     ".github/workflows/box-maintenance.yml": "4b4be9fdc6fce3f3f9b246e1270fddc25ff873d49c4c912c0300ef0a946bf856",
@@ -223,7 +223,7 @@
     ".github/workflows/ci.yml": "9e84a5ca4747f99d97e6dd9e99bd98e8dc9b2904ac5f5bdcd6521729d37734bf",
     ".github/workflows/deploy-ovh.yml": "2d717e5b16d98315544657f21dc092e7053c6d2a306288b3b10b47315ed30412",
     ".github/workflows/dns.yml": "7b5d97dfa0a8dca9029c7606372fee91674a272eeb72c8efa124e6e384a912b8",
-    ".github/workflows/link-freecad.yml": "822a083b3c9ed5e0b60fe54c290159e5aee29795a8faff1d20fda1f020f1c37d",
+    ".github/workflows/link-freecad.yml": "d793e050182663f540af67766ab13f96db84427a429417d701960ffd419c19d3",
     ".github/workflows/publish-ghcr.yml": "a2a48d2949a6d1e6120a723acc2a011e8a90de2909f23d68ac8387fa18f13c69",
     ".github/workflows/rollback-ovh.yml": "2bd38594bef83cdc732b2843b4830b9c1761d6e5a98862f5637bfa55dab30cb4",
     ".github/workflows/uptime.yml": "e3e9c4b5d12d44256ce0ec8e48af414f1c6c3c5dea8133ed1c64c2553378452f",
@@ -390,7 +390,7 @@
     "tools/gen-dialog-shims.py": "733fcfe3d60e887b3f9cbf7152708bcbda822da5467a77fc61a864ae34e82a34",
     "tools/gen-gl-compat.py": "32bd0985e5ad32402f231701eda82d61ef883c1e46fd600745d25cad51c94ae1",
     "tools/gl-noop-inventory.py": "62e573d267e5ed4894ba391694950f5d923608267f1a6673a6a868d1a652e61f",
-    "tools/native-input-bundle.py": "b71613f0d7b17a24ecdbab8e23a967ff0fa83f827d98a4cee9cf9c2b1a168596",
+    "tools/native-input-bundle.py": "20a6c24e524b2fd79af7820d9e6be300c2ff7b84c36a2d0d3d6259518cae4f28",
     "tools/native-source-pins.json": "773b30f7af9c0fe15e3f53c2126a3b37e5eef81412533ad4b079805d94a36884",
     "tools/native-toolchain-inputs.py": "9e435afe3f30ca4f75006cd94cac2a8f62d30718c0fe644f4f803459e07be53e",
     "tools/native-toolchain-pins.json": "84b2cf9ebf0034b65bcd7a8a8473d9d4a93170ad27b92e44c510429c0733854c",
@@ -422,7 +422,7 @@
     },
     ".github/workflows/link-freecad.yml": {
       "before": "c723a3da347bd799a0f9c81098c52cbbec6bb1f0991dfda19e7c7d92eb174380",
-      "after": "822a083b3c9ed5e0b60fe54c290159e5aee29795a8faff1d20fda1f020f1c37d"
+      "after": "d793e050182663f540af67766ab13f96db84427a429417d701960ffd419c19d3"
     },
     "configure-ifcopenshell-weh.sh": {
       "before": "25edb3c44cec10f816e6069918879ad3a9bd0652711b23aeb7c7ce9611837f3f",
@@ -434,7 +434,7 @@
     },
     "tools/native-input-bundle.py": {
       "before": "1e26f7ad244fea13eb30937facb0a627324e0c24a1e20bb36d03cfa38cb5145b",
-      "after": "b71613f0d7b17a24ecdbab8e23a967ff0fa83f827d98a4cee9cf9c2b1a168596"
+      "after": "20a6c24e524b2fd79af7820d9e6be300c2ff7b84c36a2d0d3d6259518cae4f28"
     }
   },
   "old_git_tree": {
