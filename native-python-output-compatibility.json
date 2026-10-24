@@ -220,7 +220,7 @@
     "tools/wasm-indirect-calls.py": "5356250c1b2e3462332f66e30b2ead24c775f9540962ae779f0735dfac0c5e91",
     "tools/wasm-table-arity.py": "8799ceb8f82c100736132afedd29116e04ee0e0beaebad54d6406e48c1d0a680"
   },
-  "new_recipe_sha256": "d86edffe659d7300ab143564ecc09ef19dec9de2b2d1150beeab8e1731202051",
+  "new_recipe_sha256": "67d0019bcb18b5e8739b48be9481713124f91d53bc40a90a8f9d9573b03665d3",
   "new_recipe_files": {
     ".github/workflows/box-diagnostics.yml": "25cb57e6f95a2541b360371f10cf0418a272a50b6e33c4d6ec4764940b09515e",
     ".github/workflows/box-maintenance.yml": "4b4be9fdc6fce3f3f9b246e1270fddc25ff873d49c4c912c0300ef0a946bf856",
@@ -402,7 +402,7 @@
     "tools/gen-dialog-shims.py": "733fcfe3d60e887b3f9cbf7152708bcbda822da5467a77fc61a864ae34e82a34",
     "tools/gen-gl-compat.py": "32bd0985e5ad32402f231701eda82d61ef883c1e46fd600745d25cad51c94ae1",
     "tools/gl-noop-inventory.py": "62e573d267e5ed4894ba391694950f5d923608267f1a6673a6a868d1a652e61f",
-    "tools/native-input-bundle.py": "20a6c24e524b2fd79af7820d9e6be300c2ff7b84c36a2d0d3d6259518cae4f28",
+    "tools/native-input-bundle.py": "0c307ee05c37a54d2a5926d1fd29c216793811dd0c80c94bd7880cbd73f6d336",
     "tools/native-source-pins.json": "773b30f7af9c0fe15e3f53c2126a3b37e5eef81412533ad4b079805d94a36884",
     "tools/native-toolchain-inputs.py": "9e435afe3f30ca4f75006cd94cac2a8f62d30718c0fe644f4f803459e07be53e",
     "tools/native-toolchain-pins.json": "84b2cf9ebf0034b65bcd7a8a8473d9d4a93170ad27b92e44c510429c0733854c",
@@ -434,7 +434,7 @@
     },
     "tools/native-input-bundle.py": {
       "before": "b71613f0d7b17a24ecdbab8e23a967ff0fa83f827d98a4cee9cf9c2b1a168596",
-      "after": "20a6c24e524b2fd79af7820d9e6be300c2ff7b84c36a2d0d3d6259518cae4f28"
+      "after": "0c307ee05c37a54d2a5926d1fd29c216793811dd0c80c94bd7880cbd73f6d336"
     }
   },
   "old_git_tree": {

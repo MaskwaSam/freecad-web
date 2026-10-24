@@ -498,6 +498,57 @@ def pack(kind, folder, workspace):
         'build_origin': origin, 'recipe_sha256': fingerprint}))
 
 
+
+def restore_stage_modes(stage, entries):
+    """Undo only data-filter permission normalization in a private extracted tree."""
+    ordinary = []
+    for name, entry in entries.items():
+        if not isinstance(name, str):
+            raise RuntimeError('non-string extracted manifest path')
+        parts = safe_rel(name).parts
+        mode = entry.get('mode')
+        if type(mode) is not int or not 0 <= mode <= 0o777:
+            raise RuntimeError('extracted manifest mode is not an ordinary 0..0777 integer')
+        kind = entry.get('type')
+        if kind not in ['file', 'directory', 'symlink']:
+            raise RuntimeError('unsupported extracted manifest type')
+        if kind != 'symlink':
+            ordinary.append((parts, kind, mode))
+    # Files first, then deepest directories: restoring a restrictive parent mode
+    # must not prevent descriptor traversal to one of its still-unchecked children.
+    ordinary.sort(key=lambda item: (item[1] == 'directory', -len(item[0]), item[0]))
+    root = os.open(stage, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        root_info = os.fstat(root)
+        if stat.S_IMODE(root_info.st_mode) != 0o700 or root_info.st_uid != os.geteuid():
+            raise RuntimeError('mode restoration requires an owned private extraction stage')
+        for parts, kind, mode in ordinary:
+            parent = os.dup(root)
+            try:
+                for component in parts[:-1]:
+                    child = os.open(component, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+                    os.close(parent)
+                    parent = child
+                flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK
+                if kind == 'directory':
+                    flags |= os.O_DIRECTORY
+                target = os.open(parts[-1], flags, dir_fd=parent)
+                try:
+                    info = os.fstat(target)
+                    if ((kind == 'file' and (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1)) or
+                        (kind == 'directory' and not stat.S_ISDIR(info.st_mode))):
+                        raise RuntimeError('extracted member type/link count differs before mode restoration')
+                    os.fchmod(target, mode)
+                    if stat.S_IMODE(os.fstat(target).st_mode) != mode:
+                        raise RuntimeError('extracted member mode readback differs')
+                finally:
+                    os.close(target)
+            finally:
+                os.close(parent)
+    finally:
+        os.close(root)
+
+
 def unpack(kind, folder, workspace, run):
     raw_manifest = folder / 'manifest.json'
     if digest(raw_manifest) != PRODUCER_MANIFEST_SHA256[kind]:
@@ -548,6 +599,7 @@ def unpack(kind, folder, workspace, run):
         stage = Path(temporary)
         with tarfile.open(archive, 'r:gz') as source:
             source.extractall(stage, filter='data')
+        restore_stage_modes(stage, manifest['tree'])
         if tree_manifest(stage, included) != manifest['tree']:
             raise RuntimeError('full extracted native input tree mismatch')
         for rel in included:
