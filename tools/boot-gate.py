@@ -1718,6 +1718,58 @@ else:
     globals()["_fcam_gate_timer"] = _timer
 '''
 
+ADDONMGR_IDLE_PY = r'''
+# The Addon Manager keeps installer_gui occupied briefly after an uninstaller emits
+# finished.  Dispatching the macro in that interval is rejected without starting a
+# MacroInstallerGUI.  Require two consecutive idle samples before the next dispatch.
+import sys as _s
+import AddonManager
+try:
+    from PySideWrapper import QtCore
+except ImportError:
+    from PySide6 import QtCore
+
+_out = {}
+_state = {"ticks": 0, "idle": 0}
+_cmd = AddonManager._fcweb_cmd
+
+
+def _report():
+    _s.__stderr__.write("FCAMIDLE " + repr(_out) + chr(10))
+    _s.__stderr__.flush()
+
+
+def _tick():
+    _state["ticks"] += 1
+    _current = getattr(_cmd, "installer_gui", None)
+    if _current is None:
+        _state["idle"] += 1
+        if _state["idle"] >= 2:
+            _timer.stop()
+            _out.update({"idle": True,
+                         "consecutiveIdleSamples": _state["idle"],
+                         "ticks": _state["ticks"],
+                         "currentType": None})
+            _report()
+            return
+    else:
+        _state["idle"] = 0
+    if _state["ticks"] >= 300:
+        _timer.stop()
+        _out.update({"error": "installer_gui did not remain idle",
+                     "ticks": _state["ticks"],
+                     "currentType": (type(_current).__name__
+                                     if _current is not None else None)})
+        _report()
+
+
+_timer = QtCore.QTimer()
+_timer.timeout.connect(_tick)
+_timer.start(100)
+globals()["_fcam_idle_timer"] = _timer
+'''
+
+
 ADDONMGR_MACRO_PY = r'''
 # Install a macro through the Addon Manager. Macros need two round trips to the wiki (the
 # page, then the rawcodeurl inside it) and finish with a toolbar-button prompt, so this
@@ -2588,6 +2640,16 @@ def scenario_addonmgr(ctx, url, args, fail):
         fail('the addon reported installed but its directory is empty')
     elif not ri.get('removed'):
         fail('uninstalling left the addon directory behind')
+
+    s.run_python(ADDONMGR_IDLE_PY)
+    ridle = s.wait_for('FCAMIDLE', 60)
+    if not isinstance(ridle, dict):
+        fail('the Addon Manager installer slot did not report its state before the macro')
+        return s
+    print('==> addon manager installer idle: %s' % ridle)
+    if ridle.get('error') or not ridle.get('idle'):
+        fail('the Addon Manager installer slot was not stably idle: %s' % ridle)
+        return s
 
     s.run_python(ADDONMGR_MACRO_PY)
     rm = s.wait_for('FCAMMACRO', 240)

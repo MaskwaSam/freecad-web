@@ -1,0 +1,756 @@
+--- a/qtbase/src/plugins/platforms/wasm/qwasmwindow.cpp
++++ b/qtbase/src/plugins/platforms/wasm/qwasmwindow.cpp
+@@ -10,6 +10,11 @@
+ #include <private/qpixmapcache_p.h>
+ #include <QtGui/qopenglfunctions.h>
+ #include <QBuffer>
++#include <QPointer>
++#include <QtGui/qscreen.h>
++#include <atomic>
++#include <optional>
++#include <stdint.h>
+ 
+ #include "qwasmbase64iconstore.h"
+ #include "qwasmdom.h"
+@@ -33,6 +38,7 @@
+ #include <sstream>
+ 
+ #include <emscripten/val.h>
++#include <emscripten.h>
+ 
+ #include <QtCore/private/qstdweb_p.h>
+ #include <QKeySequence>
+@@ -40,11 +46,208 @@
+ QT_BEGIN_NAMESPACE
+ 
+ Q_GUI_EXPORT int qt_defaultDpiX();
++
++// Diagnostic mode is resolved once for this module, not at each pointer event.
++EM_JS(int, fcwebPointerLifetimeMode_js, (), {
++    if (typeof location === "undefined")
++        return 1;
++    const value = new URLSearchParams(location.search).get("fcweb-qt-pointer-lifetime");
++    return value === "baseline" ? 2 : value === "1" ? 3 : 1;
++});
++
++static int fcwebPointerLifetimeMode()
++{
++    static const int mode = fcwebPointerLifetimeMode_js();
++    return mode;
++}
++
++static quint64 fcwebNextPointerGeneration()
++{
++    static std::atomic<quint64> next { 1 };
++    return next.fetch_add(1, std::memory_order_relaxed);
++}
++
++static quint64 fcwebNextPointerSequence()
++{
++    static std::atomic<quint64> next { 1 };
++    return next.fetch_add(1, std::memory_order_relaxed);
++}
++
++struct QWasmPointerLifetime
++{
++    QWasmPointerLifetime(QWindow *owner, quintptr platform)
++        : window(owner), platformId(platform), generation(fcwebNextPointerGeneration()),
++          mode(fcwebPointerLifetimeMode()) {}
++
++    const QPointer<QWindow> window;
++    const quintptr platformId;
++    const quint64 generation;
++    const int mode;
++    WId windowId = 0;
++    std::atomic<bool> retired { false };
++};
++
++struct QWasmPointerContext
++{
++    explicit QWasmPointerContext(const std::shared_ptr<QWasmPointerLifetime> &token)
++        : lifetime(token), window(token->window), platformId(token->platformId),
++          generation(token->generation), windowId(token->windowId),
++          windowAddress(reinterpret_cast<quintptr>(token->window.data())) {}
++
++    QWasmPointerContext(const QWasmPointerContext &registered, int callback)
++        : lifetime(registered.lifetime), window(registered.window),
++          platformId(registered.platformId), generation(registered.generation),
++          windowId(registered.windowId), windowAddress(registered.windowAddress),
++          callback(callback), sequence(fcwebNextPointerSequence()) {}
++
++    const std::shared_ptr<QWasmPointerLifetime> lifetime;
++    const QPointer<QWindow> window;
++    const quintptr platformId;
++    const quint64 generation;
++    const WId windowId;
++    const quintptr windowAddress;
++    const int callback = 0;
++    const quint64 sequence = 0;
++};
++
++// Status bits: retired=1, missing QWindow=2, different platform handle=4,
++// missing QScreen=8, different screen handle=16, changed window screen=32,
++// missing platform screen=64.
++// These helpers never inspect a QWasmWindow through the captured raw address.
++static unsigned fcwebPointerCapturedStatus(const QWasmPointerContext &context)
++{
++    // Entry/control-path logging reads only the retained token and guarded null
++    // state. It does not query QWindow::handle(), QWindow::screen(), or raw this.
++    unsigned status = context.lifetime->retired.load(std::memory_order_acquire) ? 1 : 0;
++    if (!context.window)
++        status |= 2;
++    return status;
++}
++
++static unsigned fcwebPointerStatus(const QWasmPointerContext &context)
++{
++    const unsigned status = fcwebPointerCapturedStatus(context);
++    if (status)
++        return status;
++    return reinterpret_cast<quintptr>(context.window->handle()) == context.platformId ? 0 : 4;
++}
++
++static bool fcwebPointerChecks(const QWasmPointerContext &context)
++{
++    return context.lifetime->mode & 1;
++}
++
++EM_JS(void, fcwebPointerLifetimeTrace_js,
++      (int phase, int callback, unsigned status, uint64_t generation, uint64_t sequence, uintptr_t window,
++       uintptr_t platform, uintptr_t windowId, uintptr_t related, uintptr_t screen,
++       uintptr_t platformScreen), {
++    console.info("[fcweb-qt-pointer-lifetime-v2-r2] " + JSON.stringify({
++        phase, callback, status, time: Date.now(), generation: String(generation), sequence: String(sequence),
++        window: String(window), platform: String(platform), windowId: String(windowId),
++        related: String(related), screen: String(screen), platformScreen: String(platformScreen)
++    }));
++});
++
++static void fcwebPointerTrace(const QWasmPointerContext &context, int phase, int callback,
++                             unsigned status, quintptr related = 0, quintptr screen = 0,
++                             quintptr platformScreen = 0)
++{
++    if (!(context.lifetime->mode & 2))
++        return; // No per-event JS bridge call in the no-trace mode.
++    fcwebPointerLifetimeTrace_js(phase, callback ? callback : context.callback, status, context.generation, context.sequence,
++                                context.windowAddress, context.platformId, context.windowId,
++                                related, screen, platformScreen);
++}
++
++static unsigned fcwebPointerScreenStatus(const QWasmPointerContext &context,
++                                        const QPointer<QScreen> &screen,
++                                        quintptr platformScreenId)
++{
++    const unsigned windowStatus = fcwebPointerStatus(context);
++    if (windowStatus)
++        return windowStatus; // Do not query a window already retired by its platform.
++    if (!screen)
++        return 8;
++    if (!platformScreenId)
++        return 64;
++    if (reinterpret_cast<quintptr>(static_cast<QWasmScreen *>(screen->handle())) != platformScreenId)
++        return 16;
++    return context.window->screen() == screen.data() ? 0 : 32;
++}
++
++static bool fcwebPointerBlocked(const QWasmPointerContext &context)
++{
++    if (!fcwebPointerChecks(context))
++        return false;
++    const unsigned status = fcwebPointerStatus(context);
++    if (!status)
++        return false;
++    fcwebPointerTrace(context, 199, 0, status);
++    return true;
++}
++
++static bool fcwebPointerScreenBlocked(const QWasmPointerContext &context,
++                                      const QPointer<QScreen> &screen,
++                                      quintptr platformScreenId)
++{
++    if (!fcwebPointerChecks(context))
++        return false;
++    const unsigned status = fcwebPointerScreenStatus(context, screen, platformScreenId);
++    if (!status)
++        return false;
++    fcwebPointerTrace(context, 129, 0, status, 0,
++                      reinterpret_cast<quintptr>(screen.data()), platformScreenId);
++    return true;
++}
++
++struct FcwebPointerCoordinates
++{
++    QPointer<QScreen> screen;
++    QWasmScreen *platformScreen;
++    QPointF pointInScreen;
++    QRectF geometry;
++};
++
++static std::optional<FcwebPointerCoordinates> fcwebPointerCoordinates(
++        const PointerEvent &event, const QWasmPointerContext &context)
++{
++    unsigned status = fcwebPointerStatus(context);
++    fcwebPointerTrace(context, 120, 0, status);
++    if (fcwebPointerBlocked(context))
++        return std::nullopt;
++
++    // Only the checked path uses this helper. The explicit control path calls
++    // separate, source-exact pre-candidate pointer bodies instead.
++    QPointer<QScreen> screen = context.window->screen();
++    QWasmScreen *platformScreen = screen ? static_cast<QWasmScreen *>(screen->handle()) : nullptr;
++    const quintptr screenId = reinterpret_cast<quintptr>(screen.data());
++    const quintptr platformScreenId = reinterpret_cast<quintptr>(platformScreen);
++    status = fcwebPointerScreenStatus(context, screen, platformScreenId);
++    fcwebPointerTrace(context, 121, 0, status, 0, screenId, platformScreenId);
++    if (fcwebPointerScreenBlocked(context, screen, platformScreenId))
++        return std::nullopt;
++
++    fcwebPointerTrace(context, 122, 0, status, 0, screenId, platformScreenId);
++    if (fcwebPointerScreenBlocked(context, screen, platformScreenId))
++        return std::nullopt;
++    const QPointF mapped = dom::mapPoint(event.target(), platformScreen->element(), event.localPoint);
++    status = fcwebPointerScreenStatus(context, screen, platformScreenId);
++    fcwebPointerTrace(context, 123, 0, status, 0, screenId, platformScreenId);
++    if (fcwebPointerScreenBlocked(context, screen, platformScreenId))
++        return std::nullopt;
++
++    // These two screen methods read scalar geometry in the pinned Qt source.
++    const QPointF point = platformScreen->mapFromLocal(mapped);
++    const QRectF geometry = platformScreen->geometry().toRectF();
++    fcwebPointerTrace(context, 124, 0, status, 0, screenId, platformScreenId);
++    return FcwebPointerCoordinates { screen, platformScreen, point, geometry };
++}
+ 
+ QWasmWindow::QWasmWindow(QWindow *w,
+                          QWasmCompositor *compositor, QWasmBackingStore *backingStore,
+                          WId nativeHandle)
+     : QPlatformWindow(w),
++      m_pointerLifetime(std::make_shared<QWasmPointerLifetime>(w, reinterpret_cast<quintptr>(this))),
+       m_compositor(compositor),
+       m_backingStore(backingStore),
+       m_document(dom::document()),
+@@ -56,6 +259,8 @@
+       m_inputElement(m_document.call<emscripten::val>("createElement", emscripten::val("input")))
+ 
+ {
++    const auto constructorLifetime = m_pointerLifetime;
++    fcwebPointerTrace(QWasmPointerContext(constructorLifetime), 1, 0, 0);
+     m_decoratedWindow.set("className", "qt-decorated-window");
+     m_decoratedWindow["style"].set("display", std::string("none"));
+ 
+@@ -73,8 +278,10 @@
+     if (nativeHandle) {
+         m_window = *(emscripten::val *)(nativeHandle);
+         m_winId = nativeHandle;
++        constructorLifetime->windowId = m_winId;
+         m_decoratedWindow.set("id", "qt-window-" + std::to_string(m_winId));
+         m_decoratedWindow.call<void>("appendChild", m_window);
++        fcwebPointerTrace(QWasmPointerContext(constructorLifetime), 3, 0, 0);
+         return;
+     }
+ 
+@@ -139,6 +346,7 @@
+         m_context2d = m_canvas.call<emscripten::val>("getContext", emscripten::val("2d"));
+ 
+     m_winId = WId(&m_window);
++    constructorLifetime->windowId = m_winId;
+     m_decoratedWindow.set("id", "qt-window-" + std::to_string(m_winId));
+     emscripten::val::module_property("specialHTMLTargets").set(canvasSelector(), m_canvas);
+ 
+@@ -156,29 +364,69 @@
+                 window(), &QWindow::modalityChanged,
+                 window(), [this](Qt::WindowModality) { onModalityChanged(); });
+ 
++    fcwebPointerTrace(QWasmPointerContext(constructorLifetime), 2, 0, 0);
+     setParent(parent());
++    fcwebPointerTrace(QWasmPointerContext(constructorLifetime), 3, 0, constructorLifetime->retired.load() ? 1 : 0);
+ }
+ 
+ void QWasmWindow::registerEventHandlers()
+ {
++    const QWasmPointerContext pointerContext(m_pointerLifetime);
++    auto pointerCallback = [this, pointerContext](EventType type, int callback) {
++        return [this, pointerContext, type, callback](emscripten::val event) {
++            // The dispatcher retains the registered callable. Also stop reading captures
++            // before any callout: registration removal must not affect locals.
++            QWasmWindow *const receiver = this;
++            const QWasmPointerContext registered = pointerContext;
++            const EventType eventType = type;
++            const int callbackCode = callback;
++            const QWasmPointerContext context(registered, callbackCode);
++            const bool sourceExactBody = !fcwebPointerChecks(context);
++            fcwebPointerTrace(context, 11, callbackCode, fcwebPointerCapturedStatus(context));
++
++            if (sourceExactBody) {
++                // Local diagnostic only. These overloads retain the exact
++                // pre-candidate pointer bodies, including unsafe continuation.
++                const PointerEvent pointerEvent(eventType, event);
++                if (eventType == EventType::PointerEnter || eventType == EventType::PointerLeave)
++                    receiver->handlePointerEnterLeaveEvent(pointerEvent);
++                else
++                    receiver->processPointer(pointerEvent);
++                fcwebPointerTrace(context, 13, callbackCode, fcwebPointerCapturedStatus(context));
++                return;
++            }
++
++            if (fcwebPointerBlocked(context))
++                return;
++
++            const PointerEvent pointerEvent(eventType, event);
++            const unsigned status = fcwebPointerStatus(context);
++            fcwebPointerTrace(context, 12, callbackCode, status);
++            if (fcwebPointerBlocked(context))
++                return;
++
++            if (eventType == EventType::PointerEnter || eventType == EventType::PointerLeave)
++                receiver->handlePointerEnterLeaveEvent(pointerEvent, context);
++            else
++                receiver->processPointer(pointerEvent, context);
++
++            // The call above can retire the platform. Only automatic locals are safe here.
++            fcwebPointerTrace(context, 13, callbackCode, fcwebPointerStatus(context));
++        };
++    };
++    fcwebPointerTrace(pointerContext, 10, 0, 0);
+     m_pointerDownCallback = QWasmEventHandler(m_window, "pointerdown",
+-        [this](emscripten::val event){ processPointer(PointerEvent(EventType::PointerDown, event)); }
+-    );
++        pointerCallback(EventType::PointerDown, 1));
+     m_pointerMoveCallback = QWasmEventHandler(m_window, "pointermove",
+-        [this](emscripten::val event){ processPointer(PointerEvent(EventType::PointerMove, event)); }
+-    );
++        pointerCallback(EventType::PointerMove, 2));
+     m_pointerUpCallback = QWasmEventHandler(m_window, "pointerup",
+-        [this](emscripten::val event){ processPointer(PointerEvent(EventType::PointerUp, event)); }
+-    );
++        pointerCallback(EventType::PointerUp, 3));
+     m_pointerCancelCallback = QWasmEventHandler(m_window, "pointercancel",
+-        [this](emscripten::val event){ processPointer(PointerEvent(EventType::PointerCancel, event)); }
+-    );
++        pointerCallback(EventType::PointerCancel, 4));
+     m_pointerEnterCallback = QWasmEventHandler(m_window, "pointerenter",
+-        [this](emscripten::val event) { this->handlePointerEnterLeaveEvent(PointerEvent(EventType::PointerEnter, event)); }
+-    );
++        pointerCallback(EventType::PointerEnter, 5));
+     m_pointerLeaveCallback = QWasmEventHandler(m_window, "pointerleave",
+-        [this](emscripten::val event) { this->handlePointerEnterLeaveEvent(PointerEvent(EventType::PointerLeave, event)); }
+-    );
++        pointerCallback(EventType::PointerLeave, 6));
+ 
+ #if QT_CONFIG(draganddrop)
+     m_window.call<void>("setAttribute", emscripten::val("draggable"), emscripten::val("true"));
+@@ -243,23 +491,37 @@
+ 
+ QWasmWindow::~QWasmWindow()
+ {
++    const QWasmPointerContext context(m_pointerLifetime);
++    context.lifetime->retired.store(true, std::memory_order_release);
++    fcwebPointerTrace(context, 20, 0, 1);
++    fcwebPointerTrace(context, 21, 0, 1);
+     QWasmOpenGLContext::destroyWebGLContext(this);
++    fcwebPointerTrace(context, 22, 0, 1);
+ 
+ #if QT_CONFIG(accessibility)
++    fcwebPointerTrace(context, 23, 0, 1);
+     QWasmAccessibility::onRemoveWindow(window());
++    fcwebPointerTrace(context, 24, 0, 1);
+ #endif
+     QObject::disconnect(m_transientWindowChangedConnection);
+     QObject::disconnect(m_modalityChangedConnection);
+ 
++    fcwebPointerTrace(context, 25, 0, 1);
+     shutdown();
++    fcwebPointerTrace(context, 26, 0, 1);
+ 
+     emscripten::val::module_property("specialHTMLTargets").delete_(canvasSelector());
++    fcwebPointerTrace(context, 27, 0, 1);
+     m_window.call<void>("removeChild", m_canvas);
+     m_window.call<void>("removeChild", m_a11yContainer);
+     m_context2d = emscripten::val::undefined();
++    fcwebPointerTrace(context, 28, 0, 1);
++    fcwebPointerTrace(context, 29, 0, 1);
+     commitParent(nullptr);
++    fcwebPointerTrace(context, 30, 0, 1);
+     if (m_requestAnimationFrameId > -1)
+         emscripten_cancel_animation_frame(m_requestAnimationFrameId);
++    fcwebPointerTrace(context, 31, 0, 1);
+ }
+ 
+ void QWasmWindow::shutdown()
+@@ -964,6 +1226,271 @@
+                     touchPointList, event.modifiers);
+ }
+ 
++void QWasmWindow::handlePointerEnterLeaveEvent(const PointerEvent &event,
++                                              const QWasmPointerContext &context)
++{
++    if (processPointerEnterLeave(event, context))
++        event.webEvent.call<void>("preventDefault");
++}
++
++bool QWasmWindow::processPointerEnterLeave(const PointerEvent &event,
++                                          const QWasmPointerContext &context)
++{
++    const unsigned status = fcwebPointerStatus(context);
++    fcwebPointerTrace(context, 140, 0, status);
++    if (fcwebPointerBlocked(context))
++        return false;
++    if (event.pointerType != PointerType::Mouse && event.pointerType != PointerType::Pen)
++        return false;
++
++    switch (event.type) {
++    case EventType::PointerEnter: {
++        const auto coordinates = fcwebPointerCoordinates(event, context);
++        if (!coordinates)
++            return false;
++        const auto pointInScreen = coordinates->pointInScreen;
++        if (fcwebPointerScreenBlocked(context, coordinates->screen,
++                reinterpret_cast<quintptr>(coordinates->platformScreen)))
++            return false;
++        QWindowSystemInterface::handleEnterEvent(
++                context.window.data(), mapFromGlobal(pointInScreen.toPoint()), pointInScreen);
++        break;
++    }
++    case EventType::PointerLeave:
++        QWindowSystemInterface::handleLeaveEvent(context.window.data());
++        break;
++    default:
++        break;
++    }
++
++    return false;
++}
++
++void QWasmWindow::releasePointerGrab(const MouseEvent &event,
++                                    const QWasmPointerContext &context)
++{
++    if (fcwebPointerBlocked(context))
++        return;
++    const auto capturedPointerId = m_capturedPointerId;
++    if (!capturedPointerId)
++        return;
++    const emscripten::val eventWindow = m_window;
++    const bool targeted = event.isTargetedForElement(eventWindow);
++    if (fcwebPointerBlocked(context) || !targeted)
++        return;
++    const bool captured = eventWindow.call<bool>("hasPointerCapture", *capturedPointerId);
++    if (fcwebPointerBlocked(context) || !captured)
++        return;
++    eventWindow.call<void>("releasePointerCapture", *capturedPointerId);
++    if (fcwebPointerBlocked(context))
++        return;
++    m_capturedPointerId = std::nullopt;
++}
++
++void QWasmWindow::processPointer(const PointerEvent &event,
++                               const QWasmPointerContext &context)
++{
++    unsigned status = fcwebPointerStatus(context);
++    fcwebPointerTrace(context, 100, 0, status);
++    if (fcwebPointerBlocked(context))
++        return;
++
++    // Process pointer events targeted at the window only, and not
++    // for instance events for the accessibility elements.
++    const bool targeted = event.isTargetedForElement(m_window);
++    status = fcwebPointerStatus(context);
++    fcwebPointerTrace(context, 101, 0, status);
++    if (fcwebPointerBlocked(context) || !targeted)
++        return;
++
++    switch (event.type) {
++    case EventType::PointerDown:
++        m_capturedPointerId = event.pointerId;
++        fcwebPointerTrace(context, 102, 0, 0);
++        if (fcwebPointerBlocked(context))
++            return;
++        m_window.call<void>("setPointerCapture", event.pointerId);
++        status = fcwebPointerStatus(context);
++        fcwebPointerTrace(context, 103, 0, status);
++        if (fcwebPointerBlocked(context))
++            return;
++
++        if ((window()->flags() & Qt::WindowDoesNotAcceptFocus)
++                    != Qt::WindowDoesNotAcceptFocus
++            && window()->isTopLevel()) {
++            fcwebPointerTrace(context, 104, 0, status);
++            if (fcwebPointerBlocked(context))
++                return;
++            window()->requestActivate();
++            status = fcwebPointerStatus(context);
++            fcwebPointerTrace(context, 105, 0, status);
++            if (fcwebPointerBlocked(context))
++                return;
++        }
++        break;
++    case EventType::PointerUp:
++        fcwebPointerTrace(context, 106, 0, status);
++        if (fcwebPointerBlocked(context))
++            return;
++        releasePointerGrab(event, context);
++        status = fcwebPointerStatus(context);
++        fcwebPointerTrace(context, 107, 0, status);
++        if (fcwebPointerBlocked(context))
++            return;
++        break;
++    default:
++        break;
++    };
++
++    bool diagnosticBlocked = false;
++    fcwebPointerTrace(context, 108, 0, fcwebPointerStatus(context));
++    if (fcwebPointerBlocked(context))
++        return;
++    const bool eventAccepted = deliverPointerEvent(event, context, &diagnosticBlocked);
++    status = fcwebPointerStatus(context);
++    fcwebPointerTrace(context, 109, 0, status);
++    if (diagnosticBlocked || fcwebPointerBlocked(context))
++        return;
++
++    if (!eventAccepted && event.type == EventType::PointerDown) {
++        fcwebPointerTrace(context, 110, 0, status);
++        if (fcwebPointerBlocked(context))
++            return;
++        QGuiApplicationPrivate::instance()->closeAllPopups();
++        fcwebPointerTrace(context, 111, 0, fcwebPointerStatus(context));
++    }
++
++    if (eventAccepted) {
++        event.webEvent.call<void>("preventDefault");
++        event.webEvent.call<void>("stopPropagation");
++    }
++    fcwebPointerTrace(context, 112, 0, fcwebPointerStatus(context));
++}
++
++bool QWasmWindow::deliverPointerEvent(const PointerEvent &event,
++                                    const QWasmPointerContext &context, bool *diagnosticBlocked)
++{
++    const auto coordinates = fcwebPointerCoordinates(event, context);
++    if (!coordinates) {
++        *diagnosticBlocked = true;
++        return false;
++    }
++    const auto pointInScreen = coordinates->pointInScreen;
++    const auto geometryF = coordinates->geometry;
++    QWasmScreen *const screen = coordinates->platformScreen;
++    if (fcwebPointerScreenBlocked(context, coordinates->screen,
++            reinterpret_cast<quintptr>(screen))) {
++        *diagnosticBlocked = true;
++        return false;
++    }
++    const QPointF targetPointClippedToScreen(
++            qBound(geometryF.left(), pointInScreen.x(), geometryF.right()),
++            qBound(geometryF.top(), pointInScreen.y(), geometryF.bottom()));
++
++    if (event.pointerType == PointerType::Mouse) {
++        QEvent::Type eventType =
++                MouseEvent::mouseEventTypeFromEventType(event.type, WindowArea::Client);
++        // A button pressed or released while another is held (a chord) reaches the page as
++        // a pointermove whose `button` names it -- Pointer Events never send a second
++        // pointerdown/pointerup for it. Mapped to MouseMove, that button never reached Qt:
++        // FreeCAD's CAD navigation (hold middle, then press left or right: rotate) panned.
++        // `button` is -1 (NoButton) on an ordinary move, so only a real chord change lands here.
++        if (event.type == EventType::PointerMove && event.mouseButton != Qt::NoButton)
++            eventType = event.mouseButtons.testFlag(event.mouseButton) ? QEvent::MouseButtonPress
++                                                                        : QEvent::MouseButtonRelease;
++
++        return eventType != QEvent::None
++                && QWindowSystemInterface::handleMouseEvent(
++                        context.window.data(), QWasmIntegration::getTimestamp(),
++                        context.window.data()->mapFromGlobal(targetPointClippedToScreen),
++                        targetPointClippedToScreen, event.mouseButtons, event.mouseButton,
++                        eventType, event.modifiers);
++    }
++
++    if (event.pointerType == PointerType::Pen) {
++        qreal pressure;
++        switch (event.type) {
++            case EventType::PointerDown :
++            case EventType::PointerMove :
++                pressure = event.pressure;
++                break;
++            case EventType::PointerUp :
++                pressure = 0.0;
++                break;
++            default:
++                return false;
++        }
++        // Tilt in the browser is in the range +-90, but QTabletEvent only goes to +-60.
++        qreal xTilt = qBound(-60.0, event.tiltX, 60.0);
++        qreal yTilt = qBound(-60.0, event.tiltY, 60.0);
++        // Barrel rotation is reported as 0 to 359, but QTabletEvent wants a signed value.
++        qreal rotation = event.twist > 180.0 ? 360.0 - event.twist : event.twist;
++        return QWindowSystemInterface::handleTabletEvent(
++            context.window.data(), QWasmIntegration::getTimestamp(), screen->tabletDevice(),
++            context.window.data()->mapFromGlobal(targetPointClippedToScreen),
++            targetPointClippedToScreen, event.mouseButtons, pressure, xTilt, yTilt,
++            event.tangentialPressure, rotation, event.modifiers);
++    }
++
++    QWindowSystemInterface::TouchPoint *touchPoint;
++
++    QPointF pointInTargetWindowCoords =
++            QPointF(context.window.data()->mapFromGlobal(targetPointClippedToScreen));
++    QPointF normalPosition(pointInTargetWindowCoords.x() / context.window.data()->width(),
++                           pointInTargetWindowCoords.y() / context.window.data()->height());
++
++    const auto tp = m_pointerIdToTouchPoints.find(event.pointerId);
++    if (event.pointerType != PointerType::Pen && tp != m_pointerIdToTouchPoints.end()) {
++        touchPoint = &tp.value();
++    } else {
++        touchPoint = &m_pointerIdToTouchPoints
++                              .insert(event.pointerId, QWindowSystemInterface::TouchPoint())
++                              .value();
++
++        // Assign touch point id. TouchPoint::id is int, but QGuiApplicationPrivate::processTouchEvent()
++        // will not synthesize mouse events for touch points with negative id; use the absolute value for
++        // the touch point id.
++        touchPoint->id = qAbs(event.pointerId);
++
++        touchPoint->state = QEventPoint::State::Pressed;
++    }
++
++    const bool stationaryTouchPoint = (normalPosition == touchPoint->normalPosition);
++    touchPoint->normalPosition = normalPosition;
++    touchPoint->area = QRectF(targetPointClippedToScreen, QSizeF(event.width, event.height))
++                                   .translated(-event.width / 2, -event.height / 2);
++    touchPoint->pressure = event.pressure;
++
++    switch (event.type) {
++    case EventType::PointerUp:
++        touchPoint->state = QEventPoint::State::Released;
++        break;
++    case EventType::PointerMove:
++        touchPoint->state = (stationaryTouchPoint ? QEventPoint::State::Stationary
++                                                  : QEventPoint::State::Updated);
++        break;
++    default:
++        break;
++    }
++
++    QList<QWindowSystemInterface::TouchPoint> touchPointList;
++    touchPointList.reserve(m_pointerIdToTouchPoints.size());
++    std::transform(m_pointerIdToTouchPoints.begin(), m_pointerIdToTouchPoints.end(),
++                   std::back_inserter(touchPointList),
++                   [](const QWindowSystemInterface::TouchPoint &val) { return val; });
++
++    if (event.type == EventType::PointerUp || event.type == EventType::PointerCancel)
++        m_pointerIdToTouchPoints.remove(event.pointerId);
++
++    return event.type == EventType::PointerCancel
++            ? QWindowSystemInterface::handleTouchCancelEvent(
++                    context.window.data(), QWasmIntegration::getTimestamp(), screen->touchDevice(),
++                    event.modifiers)
++            : QWindowSystemInterface::handleTouchEvent(
++                    context.window.data(), QWasmIntegration::getTimestamp(), screen->touchDevice(),
++                    touchPointList, event.modifiers);
++}
++
+ void QWasmWindow::handleWheelEvent(const emscripten::val &event)
+ {
+     if (processWheel(WheelEvent(EventType::Wheel, event)))
+@@ -1217,11 +1744,23 @@
+ void QWasmWindow::onParentChanged(QWasmWindowTreeNode *previous, QWasmWindowTreeNode *current,
+                                   QWasmWindowStack<>::PositionPreference positionPreference)
+ {
+-    if (previous)
+-        previous->containerElement().call<void>("removeChild", m_decoratedWindow);
+-    if (current)
+-        current->containerElement().call<void>("appendChild", m_decoratedWindow);
++    const QWasmPointerContext context(m_pointerLifetime);
++    const auto previousId = reinterpret_cast<quintptr>(previous);
++    const auto currentId = reinterpret_cast<quintptr>(current);
++    const emscripten::val decoratedWindow = m_decoratedWindow;
++    if (previous) {
++        fcwebPointerTrace(context, 50, 0, context.lifetime->retired.load() ? 1 : 0, previousId);
++        previous->containerElement().call<void>("removeChild", decoratedWindow);
++        fcwebPointerTrace(context, 51, 0, context.lifetime->retired.load() ? 1 : 0, previousId);
++    }
++    if (current) {
++        fcwebPointerTrace(context, 52, 0, context.lifetime->retired.load() ? 1 : 0, currentId);
++        current->containerElement().call<void>("appendChild", decoratedWindow);
++        fcwebPointerTrace(context, 53, 0, context.lifetime->retired.load() ? 1 : 0, currentId);
++    }
++    fcwebPointerTrace(context, 54, 0, context.lifetime->retired.load() ? 1 : 0, currentId);
+     QWasmWindowTreeNode::onParentChanged(previous, current, positionPreference);
++    fcwebPointerTrace(context, 55, 0, context.lifetime->retired.load() ? 1 : 0, currentId);
+ }
+ 
+ QT_END_NAMESPACE
+--- a/qtbase/src/plugins/platforms/wasm/qwasmwindow.h
++++ b/qtbase/src/plugins/platforms/wasm/qwasmwindow.h
+@@ -33,6 +33,8 @@
+ struct KeyEvent;
+ struct PointerEvent;
+ struct WheelEvent;
++struct QWasmPointerLifetime;
++struct QWasmPointerContext;
+ 
+ Q_DECLARE_LOGGING_CATEGORY(qLcQpaWasmInputContext)
+ 
+@@ -148,16 +150,22 @@
+     void handleBeforeInputEvent(emscripten::val event);
+ 
+     void handlePointerEnterLeaveEvent(const PointerEvent &event);
++    void handlePointerEnterLeaveEvent(const PointerEvent &event, const QWasmPointerContext &context);
+     bool processPointerEnterLeave(const PointerEvent &event);
++    bool processPointerEnterLeave(const PointerEvent &event, const QWasmPointerContext &context);
+     void releasePointerGrab(const MouseEvent &event);
++    void releasePointerGrab(const MouseEvent &event, const QWasmPointerContext &context);
+     void processPointer(const PointerEvent &event);
++    void processPointer(const PointerEvent &event, const QWasmPointerContext &context);
+     bool deliverPointerEvent(const PointerEvent &event);
++    bool deliverPointerEvent(const PointerEvent &event, const QWasmPointerContext &context, bool *diagnosticBlocked);
+     void handleWheelEvent(const emscripten::val &event);
+     bool processWheel(const WheelEvent &event);
+     Qt::WindowFlags fixTopLevelWindowFlags(Qt::WindowFlags) const;
+     bool shouldBeAboveTransientParentFlags(Qt::WindowFlags flags) const;
+     QWasmWindowStack<>::PositionPreference positionPreferenceFromWindowFlags(Qt::WindowFlags) const;
+ 
++    std::shared_ptr<QWasmPointerLifetime> m_pointerLifetime;
+     QWasmCompositor *m_compositor = nullptr;
+     QWasmBackingStore *m_backingStore = nullptr;
+     QRect m_normalGeometry {0, 0, 0 ,0};
+--- a/qtbase/src/corelib/platform/wasm/qwasmsuspendresumecontrol.cpp
++++ b/qtbase/src/corelib/platform/wasm/qwasmsuspendresumecontrol.cpp
+@@ -173,7 +173,7 @@
+ {
+     static uint32_t i = 0;
+     ++i;
+-    m_eventHandlers.emplace(i, std::move(handler));
++    m_eventHandlers.emplace(i, std::make_shared<std::function<void(val)>>(std::move(handler)));
+     qtRegisterEventHandlerJs(i);
+     return i;
+ }
+@@ -232,8 +232,11 @@
+ 
+             auto it = m_eventHandlers.find(event["index"].as<int>());
+             if (it != m_eventHandlers.end()) {
++                // A handler may unregister itself during argument evaluation or dispatch.
++                // Retain the original callable before callouts; never use the iterator again.
++                auto handler = it->second;
+                 setCurrentEvent(event["arg"]);
+-                it->second(currentEvent());
++                (*handler)(currentEvent());
+                 setCurrentEvent(emscripten::val::undefined());
+             }
+             ++count;
+--- a/qtbase/src/corelib/platform/wasm/qwasmsuspendresumecontrol_p.h
++++ b/qtbase/src/corelib/platform/wasm/qwasmsuspendresumecontrol_p.h
+@@ -9,6 +9,7 @@
+ #include <emscripten/val.h>
+ #include <map>
+ #include <functional>
++#include <memory>
+ #include <chrono>
+ 
+ //
+@@ -55,7 +56,7 @@
+ private:
+     friend void qtSendPendingEvents();
+ 
+-    std::map<int, std::function<void(emscripten::val)>> m_eventHandlers;
++    std::map<int, std::shared_ptr<std::function<void(emscripten::val)>>> m_eventHandlers;
+     std::function<bool(int)> m_eventFilter = [](int) { return true; };
+     emscripten::val m_currentEvent = emscripten::val::undefined();
+ };

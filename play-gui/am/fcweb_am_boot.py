@@ -1,20 +1,113 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
 # Copyright (c) Virtastic
-"""Boot hook for the FreeCAD-Web Addon Manager overlay.
+"""Boot guard and verified installer for the FreeCAD-Web Addon Manager.
 
-Imported once at startup, after /fcweb-am is on sys.path. Holds the patches that cannot be
-delivered by shadowing a module -- because a class object is shared, so replacing a method
-on it is visible to every module that already imported that class, which shadowing is not.
-
-Nothing here imports the Addon Manager's own modules eagerly. They are not on sys.path
-until the workbench is activated, and importing them at boot would both slow startup and
-drag Qt network machinery in before the GUI exists. install() only registers a hook.
+The page stages these files before Python starts. install_guard() uses only the
+standard library, before FreeCAD's Mod loop, and guards the command class before
+InitGui constructs/registers it. install() runs at the first safe GUI Python entry.
+The command stays inactive until every critical patch has actually been verified.
 """
 
 import os
 import sys
 
 _installed = False
+_guard_installed = False
+_readiness = {"schema": 1, "phase": "pending", "guarded": False, "verified": False, "error": ""}
+READINESS_PATH = "/tmp/fcweb-am-readiness.json"
+READINESS_TOKEN_PATH = "/tmp/fcweb-am-readiness-token"
+
+
+def readiness():
+    return dict(_readiness)
+
+
+def _publish(phase, error=""):
+    import json
+    _readiness.update(phase=phase, error=str(error))
+    with open(READINESS_PATH + ".tmp", "w", encoding="utf-8") as stream:
+        json.dump(_readiness, stream, sort_keys=True)
+    os.replace(READINESS_PATH + ".tmp", READINESS_PATH)
+
+
+def _guard_command(module):
+    cls = module.CommandAddonManager
+    if getattr(cls, "_fcweb_readiness_guard", False):
+        return
+    original_activated = cls.Activated
+    original_active = getattr(cls, "IsActive", None)
+
+    def Activated(self, *args, **kwargs):
+        if _readiness["phase"] != "ready" or not _readiness["verified"]:
+            print("[fcweb] Addon Manager unavailable: " +
+                  (_readiness["error"] or "safety patches are still loading"))
+            sys.stdout.flush()
+            return None
+        return original_activated(self, *args, **kwargs)
+
+    def IsActive(self):
+        if _readiness["phase"] != "ready" or not _readiness["verified"]:
+            return False
+        return bool(original_active(self)) if original_active else True
+
+    Activated._fcweb_readiness_guard = True
+    IsActive._fcweb_readiness_guard = True
+    cls.Activated = Activated
+    cls.IsActive = IsActive
+    cls._fcweb_readiness_guard = True
+    _readiness["guarded"] = True
+    _publish("guarded")
+
+
+def install_guard():
+    """Guard the normal first import, before InitGui registers Std_AddonMgr.
+
+    No Qt or FreeCAD module is imported here. Failure must abort the bootstrap,
+    rather than allow a startup with the shipped command unguarded.
+    """
+    global _guard_installed
+    if _guard_installed:
+        return readiness()
+    if "AddonManager" in sys.modules:
+        raise RuntimeError("Addon Manager was imported before its startup safety guard")
+    import re
+    with open(READINESS_TOKEN_PATH, encoding="ascii") as stream:
+        token = stream.read().strip()
+    if not re.fullmatch(r"[0-9a-f]{32}", token):
+        raise RuntimeError("Addon Manager boot token is absent or invalid")
+    _readiness["token"] = token
+    import importlib.abc
+    import importlib.machinery
+
+    class Loader(importlib.abc.Loader):
+        def __init__(self, original):
+            self.original = original
+
+        def create_module(self, spec):
+            creator = getattr(self.original, "create_module", None)
+            return creator(spec) if creator else None
+
+        def exec_module(self, module):
+            self.original.exec_module(module)
+            _guard_command(module)
+
+        def __getattr__(self, name):
+            return getattr(self.original, name)
+
+    class Finder(importlib.abc.MetaPathFinder):
+        def find_spec(self, fullname, path=None, target=None):
+            if fullname != "AddonManager":
+                return None
+            spec = importlib.machinery.PathFinder.find_spec(fullname, path, target)
+            if spec is None or spec.loader is None:
+                raise ImportError("Addon Manager safety guard could not find its normal loader")
+            spec.loader = Loader(spec.loader)
+            return spec
+
+    sys.meta_path.insert(0, Finder())
+    _guard_installed = True
+    _publish("pending")
+    return readiness()
 
 
 def _patch_blocking_dialogs():
@@ -379,70 +472,86 @@ def _fix_stats_url():
     return "stats URL already %s" % (current or "unset")
 
 
+def _verify_critical_patches():
+    """Check actual bindings, not a dispatch acknowledgement or log wording."""
+    import importlib
+    import AddonManager
+    import addonmanager_fcweb_async as async_workers
+    import addonmanager_connection_checker as connection
+    import addonmanager_freecad_interface as fci
+    import fcweb_am_install as installers
+    from Widgets.addonmanager_utility_dialogs import MessageDialog
+
+    cls = AddonManager.CommandAddonManager
+    if not (_guard_installed and _readiness["guarded"] and
+            getattr(cls.Activated, "_fcweb_readiness_guard", False) and
+            getattr(cls.IsActive, "_fcweb_readiness_guard", False)):
+        raise RuntimeError("Addon Manager command safety guard is absent")
+    for name in SHADOWS:
+        module = sys.modules.get(name)
+        if module is None or os.path.realpath(module.__file__) != os.path.join(OVERLAY_DIR, name + ".py"):
+            raise RuntimeError("Addon Manager shadow has the wrong source: " + name)
+    for target, names in REBIND.items():
+        module = importlib.import_module(target)
+        for name in names:
+            actual = getattr(module, name)
+            expected = [getattr(sys.modules[shadow], name) for shadow in SHADOWS
+                        if hasattr(sys.modules[shadow], name)]
+            if len(expected) != 1 or actual is not expected[0]:
+                raise RuntimeError("Addon Manager worker binding is not patched: " + target + "." + name)
+            if name != "CheckSingleUpdateWorker" and not issubclass(actual, async_workers.AsyncWorker):
+                raise RuntimeError("Addon Manager worker is not asynchronous: " + name)
+    for module_name, names in (
+            ("addonmanager_installer", ("AddonInstaller", "MacroInstaller")),
+            ("addonmanager_uninstaller", ("AddonUninstaller", "MacroUninstaller")),
+            ("addonmanager_dependency_installer", ("DependencyInstaller",)),
+            ("addonmanager_workers_startup", ("CheckSingleUpdateWorker",))):
+        module = importlib.import_module(module_name)
+        for name in names:
+            if getattr(module, name).moveToThread is not installers._no_move_to_thread:
+                raise RuntimeError("Addon Manager installer thread guard is absent: " + name)
+    for label, method in (("connection checker", connection.ConnectionCheckerGUI.start),
+                          ("non-modal launch", fci.loadUi),
+                          ("non-blocking dialogs", MessageDialog.show_modal)):
+        if getattr(method, "__module__", None) != __name__:
+            raise RuntimeError("Addon Manager critical patch is absent: " + label)
+
+
 def _install_now():
-    """Applied the first time an Addon Manager module is importable."""
-    notes = []
-    try:
-        notes.append(_install_shadows())
-    except Exception as e:
-        notes.append("SHADOW INSTALL FAILED %r -- shipped QThread workers still in place"
-                     % (e,))
-    try:
-        notes.append(_patch_connection_checker())
-    except Exception as e:
-        notes.append("connection-checker patch FAILED %r" % (e,))
-    try:
-        import fcweb_am_install
-        notes.extend(fcweb_am_install.install())
-    except Exception as e:
-        notes.append("install patches FAILED %r" % (e,))
-    try:
-        notes.append(_fix_stats_url())
-    except Exception as e:
-        notes.append("stats URL patch FAILED %r" % (e,))
-    try:
-        notes.append(_fix_proxy_host_map())
-    except Exception as e:
-        notes.append("proxy host map patch FAILED %r" % (e,))
-    try:
-        notes.append(_patch_pip())
-    except Exception as e:
-        notes.append("pip patch FAILED %r" % (e,))
-    try:
-        notes.append(_patch_git())
-    except Exception as e:
-        notes.append("git patch FAILED %r" % (e,))
-    try:
-        notes.append(_patch_requests())
-    except Exception as e:
-        notes.append("requests patch FAILED %r" % (e,))
-    try:
-        notes.append(_stash_command())
-    except Exception as e:
-        notes.append("command stash FAILED %r" % (e,))
-    try:
-        notes.append(_patch_modal_launch())
-    except Exception as e:
-        notes.append("modal-launch patch FAILED %r" % (e,))
-    try:
-        notes.append(_patch_blocking_dialogs())
-    except Exception as e:
-        notes.append("dialog patch FAILED %r" % (e,))
+    """Apply critical patches once, failing closed on any installation error."""
+    import importlib
+    # Import targets before rebinding, so verification covers all cached class bindings.
+    for target in REBIND:
+        importlib.import_module(target)
+    notes = [_install_shadows(), _patch_connection_checker()]
+    import fcweb_am_install
+    install_notes = fcweb_am_install.install()
+    if any(" FAILED " in note for note in install_notes):
+        raise RuntimeError("; ".join(install_notes))
+    notes.extend(install_notes)
+    for patch in (_fix_stats_url, _fix_proxy_host_map, _patch_pip, _patch_git,
+                  _patch_requests, _stash_command, _patch_modal_launch,
+                  _patch_blocking_dialogs):
+        notes.append(patch())
+    _verify_critical_patches()
     if TRACE:
-        try:
-            notes.append(_trace_startup())
-        except Exception as e:
-            notes.append("trace patch FAILED %r" % (e,))
-    return [n for n in notes if n]
+        notes.append(_trace_startup())
+    return [note for note in notes if note]
 
 
 def install():
-    """Register a lazy hook; the Addon Manager is not importable at boot."""
+    """Install at the safe GUI entry; release the command only on verified success."""
     global _installed
     if _installed:
-        return
+        if _readiness["phase"] != "ready":
+            raise RuntimeError(_readiness["error"] or "Addon Manager installation is already in progress")
+        return readiness()
+    if not _guard_installed or not _readiness["guarded"]:
+        _publish("error", "Addon Manager startup command guard was not installed")
+        raise RuntimeError(_readiness["error"])
     _installed = True
-    print("[fcweb] addon-manager overlay active on /fcweb-am")
+    _publish("installing")
+    print("[fcweb] addon-manager overlay installing on /fcweb-am")
     sys.stdout.flush()
 
     # Shared sessions: the preferences page, the Edit-menu commands and the observer.
@@ -462,11 +571,6 @@ def install():
         print("[fcweb] %s" % fcweb_asyncio.install())
     except Exception as e:
         print("[fcweb] asyncio shim FAILED: %r" % (e,))
-
-    try:
-        from PySideWrapper import QtCore
-    except ImportError:
-        from PySide6 import QtCore
 
     # Base::Quantity <-> Python for PySide signals and slots. FreeCAD is built with
     # FREECAD_USE_SHIBOKEN=OFF on wasm, so the registration upstream does in
@@ -508,43 +612,23 @@ def install():
     except Exception as e:
         print("[fcweb] Coin 2D font FAILED: %r" % (e,))
 
-    state = {"timer": None, "tries": 0, "done": False}
-
-    def _apply():
-        """Apply the patches if the Addon Manager is importable yet. True when done."""
-        if state["done"]:
-            return True
-        # FreeCAD registers Std_AddonMgr at startup, so the package is usually importable
-        # already; adding its directory covers the case where it is not.
-        for d in ("/freecad/Mod/AddonManager",):
-            if os.path.isdir(d) and d not in sys.path:
-                sys.path.append(d)
-        try:
-            import Widgets.addonmanager_utility_dialogs  # noqa: F401
-        except Exception:
-            return False
-        state["done"] = True
+    try:
+        for directory in ("/freecad/Mod/AddonManager",):
+            if os.path.isdir(directory) and directory not in sys.path:
+                sys.path.append(directory)
         for note in _install_now():
             print("[fcweb] addon-manager: %s" % note)
+        _readiness["verified"] = True
+        _publish("ready")
+        print("[fcweb] addon-manager overlay ready (critical patches verified)")
         sys.stdout.flush()
-        return True
-
-    # Try RIGHT NOW, before any timer. Std_AddonMgr is registered at startup and a user
-    # can click it immediately; waiting even one 2 s tick leaves a window in which the
-    # command runs against the shipped QThread workers and aborts the engine. The boot
-    # gate hit exactly that window, which is how this was found.
-    if not _apply():
-        def _try():
-            state["tries"] += 1
-            if _apply() or state["tries"] > 900:   # ~30 min, then give up quietly
-                state["timer"].stop()
-
-        t = QtCore.QTimer()
-        t.timeout.connect(_try)
-        t.start(2000)
-        state["timer"] = t
-        # Held on the module so the QTimer is not garbage-collected with this frame.
-        globals()["_hook_timer"] = t
+        return readiness()
+    except BaseException as error:
+        _readiness["verified"] = False
+        _publish("error", repr(error))
+        print("[fcweb] addon-manager overlay FAILED: %r" % (error,))
+        sys.stdout.flush()
+        raise
 
 
 def probe_modal_from_callback():

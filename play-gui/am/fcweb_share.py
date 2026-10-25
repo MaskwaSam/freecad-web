@@ -867,6 +867,9 @@ class FcwebSharingPage(object):
         _try(lambda: _paint(self.form))
 
     def _start(self):
+        if _ctl().get('unavailable'):
+            self._repaint()
+            return
         # The work first, then the cosmetics. Touching a widget can raise here (shiboken
         # invalidates this page's wrappers once the dialog is up), and a failed label
         # update must never stop the session from starting or the dialog from closing.

@@ -46,6 +46,7 @@ ELSEWHERE = {
     # sees it; the Qt sources step applies them itself, zero-fuzz and fail-closed, and loops
     # over the glob the same way the ccx lane does, so a new qt patch needs no code change.
     'qt-wasm-embind-int64.patch': ('.github/workflows/build-qt-wasm.yml', 'patches/qt-*.patch'),
+    'qt-wasm-accessibility-emval.patch': ('.github/workflows/build-qt-wasm.yml', 'patches/qt-*.patch'),
     'qt-wasm-gl-context-rehome.patch': ('.github/workflows/build-qt-wasm.yml', 'patches/qt-*.patch'),
     'qt-wasm-fbo-depth-attachment.patch': ('.github/workflows/build-qt-wasm.yml', 'patches/qt-*.patch'),
     'qt-wasm-transient-children-stay-above.patch': ('.github/workflows/build-qt-wasm.yml', 'patches/qt-*.patch'),

@@ -53,6 +53,7 @@ on:
       # watching it meant a patch fix triggered only the COMPILE check and never a relink
       # -- the artifact would stay stale while CI went green.
       - 'patches/freecad.patch'
+      - 'patches/qt-*.patch'
       # apply.sh applies this one to the pyside-setup tree the Python-lane cache restores,
       # and refuses a tree stamped with a different version of it -- so a change to the
       # patch must re-run the link, or a rerun on an older commit fails at that refusal.
@@ -68,6 +69,8 @@ on:
       - 'tools/check-archive-eh.sh'
       - 'tools/wasm-func-sig.py'
       - 'tools/fetch-freecad-submodules.sh'
+      - 'tools/fetch-pinned-freecad.py'
+      - 'tools/native-source-pins.json'
       # Link inputs and boot-gate inputs that were not watched: the --pre-js is compiled
       # INTO FreeCAD.js, and the gate boots the checked-out page. A pre-gui.js fix that
       # relinked nothing shipped nothing (the wasm64 BigInt event-dispatch fix).
@@ -89,6 +92,18 @@ on:
       - 'patches/pyside-pkg-glue/**'
   workflow_dispatch:
     inputs:
+      python_run_id:
+        description: "successful python producer run ID (exact complete artifact, blank uses legacy cache)"
+        type: string
+        default: ""
+      qt_run_id:
+        description: "successful qt producer run ID (exact complete artifact, blank uses legacy cache)"
+        type: string
+        default: ""
+      cpp_run_id:
+        description: "successful cpp producer run ID (exact complete artifact, blank uses legacy cache)"
+        type: string
+        default: ""
       rebuild:
         description: "ignore the cached build tree and start clean"
         type: boolean
@@ -100,18 +115,18 @@ on:
       stop_after:
         description: "stop after this stage"
         type: choice
-        options: [link, configure, compile, install]
-        default: link
+        options: ["link", "configure", "compile", "install"]
+        default: "link"
       runner:
         description: "where to build"
         type: choice
-        options: [builder, vps, hosted]
-        default: builder
+        options: ["builder", "vps", "hosted"]
+        default: "builder"
       ccache:
         description: "compile cache: on, off (baseline), clear (drop it first)"
         type: choice
-        options: [on, off, clear]
-        default: on
+        options: ["on", "off", "clear"]
+        default: "on"
 
 permissions:
   contents: read
@@ -131,7 +146,7 @@ env:
 
 jobs:
   link:
-    timeout-minutes: 720
+    timeout-minutes: ${{ inputs.runner == 'hosted' && 360 || 720 }}
     # One box is a single point of failure: when the runner agent died on 2026-08-25 the
     # queue simply stopped, with a verdict an hour away and no way to reach it. An absent
     # input (any push event) means vps, which is the same trap build-deps.yml fell into --
@@ -147,6 +162,10 @@ jobs:
     runs-on: ${{ (inputs.runner || 'builder') == 'hosted' && 'ubuntu-latest' || (inputs.runner || 'builder') == 'vps' && fromJSON('["self-hosted","ovh","virtastic"]') || fromJSON('["self-hosted","builder","virtastic"]') }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Require clean hosted native diagnostic contract
+        if: ${{ inputs.runner == 'hosted' }}
+        run: python3 tools/native-input-bundle.py begin link
+
 
       # The build tree store lives in the RUNNER's home, whichever box that is: /home/ubuntu
       # on the VPS, /home/jenkins on the LAN builder (the default since 2026-09-15).
@@ -173,6 +192,7 @@ jobs:
       # Three caches, restored in this order deliberately: the C++ stack owns deps/wasm,
       # and the Python one adds subdirectories (lib/*-mod, shiboken6, pyside-pkg) inside it.
       - name: Restore the C++ dependency stack
+        if: ${{ inputs.runner != 'hosted' && (!inputs.cpp_run_id) }}
         id: depcache
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
@@ -181,12 +201,27 @@ jobs:
           restore-keys: |
             fcweb-deps-${{ env.DEPS_KEY }}-
 
+      - name: Restore exact cpp native producer artifact
+        if: ${{ inputs.cpp_run_id != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NATIVE_PRODUCER_RUN: ${{ inputs.cpp_run_id }}
+        run: |
+          set -euo pipefail
+          [[ "$NATIVE_PRODUCER_RUN" =~ ^[0-9]+$ ]] || { echo '::error::producer run ID must be numeric'; exit 1; }
+          mkdir -p native-inputs/cpp
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$NATIVE_PRODUCER_RUN" > native-inputs/cpp/producer-run.json
+          python3 tools/native-input-bundle.py check-run cpp --run-id "$NATIVE_PRODUCER_RUN" --run-json native-inputs/cpp/producer-run.json
+          gh run download "$NATIVE_PRODUCER_RUN" --repo "$GITHUB_REPOSITORY" --name "native-input-cpp-$NATIVE_PRODUCER_RUN" --dir native-inputs/cpp
+          python3 tools/native-input-bundle.py unpack cpp --run-id "$NATIVE_PRODUCER_RUN" --run-json native-inputs/cpp/producer-run.json
+
       - name: Restore Qt 6.11.2 for wasm
+        if: ${{ inputs.runner != 'hosted' && (!inputs.qt_run_id) }}
         id: qtcache
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: qt/6.11.2/wasm_mt_weh
-          key: ${{ env.QT_KEY }}
+          key: ${{ env.QT_KEY }}-${{ hashFiles('patches/qt-*.patch') }}
 
       # This list must stay BYTE-IDENTICAL to the save list in build-python-deps.yml.
       # actions/cache derives a cache VERSION from the path list, and a restore only matches
@@ -195,7 +230,22 @@ jobs:
       # copy predated deps/src/matplotlib and deps/wasm/include/freetype2 being added, so it
       # kept restoring the cache from before the freetype headers were staged and the job
       # failed on ft2build.h against a cache that had contained it for hours.
+      - name: Restore exact qt native producer artifact
+        if: ${{ inputs.qt_run_id != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NATIVE_PRODUCER_RUN: ${{ inputs.qt_run_id }}
+        run: |
+          set -euo pipefail
+          [[ "$NATIVE_PRODUCER_RUN" =~ ^[0-9]+$ ]] || { echo '::error::producer run ID must be numeric'; exit 1; }
+          mkdir -p native-inputs/qt
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$NATIVE_PRODUCER_RUN" > native-inputs/qt/producer-run.json
+          python3 tools/native-input-bundle.py check-run qt --run-id "$NATIVE_PRODUCER_RUN" --run-json native-inputs/qt/producer-run.json
+          gh run download "$NATIVE_PRODUCER_RUN" --repo "$GITHUB_REPOSITORY" --name "native-input-qt-$NATIVE_PRODUCER_RUN" --dir native-inputs/qt
+          python3 tools/native-input-bundle.py unpack qt --run-id "$NATIVE_PRODUCER_RUN" --run-json native-inputs/qt/producer-run.json
+
       - name: Restore the Python extension libraries
+        if: ${{ inputs.runner != 'hosted' && (!inputs.python_run_id) }}
         id: pydepscache
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
@@ -225,9 +275,7 @@ jobs:
             deps/wasm/shiboken6
             build-shiboken-wasm
             build-pyside-wasm
-          key: fcweb-pydeps-${{ env.PYDEPS_KEY }}-
-          restore-keys: |
-            fcweb-pydeps-${{ env.PYDEPS_KEY }}-
+          key: fcweb-pydeps-${{ env.PYDEPS_KEY }}-${{ hashFiles('configure-*.sh', 'rebuild-pyside-weh.sh', 'build-shiboken-host.sh', 'build-cpython*.sh', 'patches/qt-*.patch', 'patches/numpy.patch', 'patches/pyside-setup.patch', 'patches/pivy.patch', 'patches/apply.sh', 'tools/patch-pyside-*.py', 'tools/patch-shiboken-*.py', '*.meson.in', 'tools/stage-python-packages.sh', 'tools/verify-patch-applied.py') }}
 
       # THE BUILD TREE LIVES ON THIS BOX, not in actions/cache.
       #
@@ -252,6 +300,20 @@ jobs:
       # edge -- about 25 minutes that the cache sitting in GitHub could have saved. This
       # restores it once, the save step then writes it to the store, and from then on the
       # probe finds the store and this is skipped forever.
+      - name: Restore exact python native producer artifact
+        if: ${{ inputs.python_run_id != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NATIVE_PRODUCER_RUN: ${{ inputs.python_run_id }}
+        run: |
+          set -euo pipefail
+          [[ "$NATIVE_PRODUCER_RUN" =~ ^[0-9]+$ ]] || { echo '::error::producer run ID must be numeric'; exit 1; }
+          mkdir -p native-inputs/python
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$NATIVE_PRODUCER_RUN" > native-inputs/python/producer-run.json
+          python3 tools/native-input-bundle.py check-run python --run-id "$NATIVE_PRODUCER_RUN" --run-json native-inputs/python/producer-run.json
+          gh run download "$NATIVE_PRODUCER_RUN" --repo "$GITHUB_REPOSITORY" --name "native-input-python-$NATIVE_PRODUCER_RUN" --dir native-inputs/python
+          python3 tools/native-input-bundle.py unpack python --run-id "$NATIVE_PRODUCER_RUN" --run-json native-inputs/python/producer-run.json
+
       - name: Is the local build-tree store populated?
         id: store-probe
         run: |
@@ -277,7 +339,7 @@ jobs:
           fi
 
       - name: Seed the store from the old cache (first run only)
-        if: ${{ inputs.rebuild != true && steps.store-probe.outputs.need_cache == '1' }}
+        if: ${{ inputs.runner != 'hosted' && (inputs.rebuild != true && steps.store-probe.outputs.need_cache == '1') }}
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
@@ -317,6 +379,19 @@ jobs:
           set -euo pipefail
           rm -rf "$BUILDTREE_STORE"
           echo "  build-tree store dropped at the user's request"
+
+      - name: Cache emsdk
+        if: ${{ inputs.runner != 'hosted' && (true) }}
+        id: emsdk-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: emsdk
+          key: emsdk-6.0.9-wasm64-shims-v1
+
+      - name: Install emsdk 6.0.9
+        if: ${{ inputs.runner == 'hosted' || steps.emsdk-cache.outputs.cache-hit != 'true' }}
+        run: |
+          python3 tools/native-toolchain-inputs.py emsdk
 
       # Every input the link names comes from another workflow. Say which one is missing and
       # which workflow makes it, rather than failing an hour later inside cmake or wasm-ld.
@@ -380,43 +455,6 @@ jobs:
           done
           exit $fail
 
-      - name: Cache emsdk
-        id: emsdk-cache
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: emsdk
-          key: emsdk-6.0.9-wasm64-shims-v1
-
-      - name: Install emsdk 6.0.9
-        if: steps.emsdk-cache.outputs.cache-hit != 'true'
-        run: |
-          set -e
-          git clone --depth 1 https://github.com/emscripten-core/emsdk.git
-          cd emsdk && ./emsdk install 6.0.9 && ./emsdk activate 6.0.9
-
-      # THE COMPILE CACHE.
-      #
-      # Why this is needed at all: deps/src/freecad is cached nowhere and is re-extracted
-      # every run, but a tag tarball carries the TAG's mtimes, so the ~2,700 pristine
-      # sources come back older than the cached objects and are correctly up to date.
-      # patches/apply.sh then rewrites ~200 files with patch(1), stamping them NOW --
-      # newer than every object, unconditionally, every run. Those 200 fan out to 1,860
-      # edges. Run 33004112792 ended `reached: [1860/1860]`: every target rebuilt, 87.9 of
-      # its 110 minutes, with a 421 MB build-tree cache restored and then discarded.
-      #
-      # 1,860 is a deterministic floor, not bad luck. It recurs until either the mtimes
-      # stop moving or the compiles stop costing anything. This is the second.
-      #
-      # NOT chosen: touching the patched files back to a fixed mtime. It is faster (0 edges
-      # rather than 1,860 cheap ones) and it is the wrong trade -- getting it wrong in the
-      # "should rebuild but doesn't" direction pairs new source with old objects and
-      # nothing notices. That is the shape RELEASE-PLAN.md V7 says to avoid. ccache errs
-      # the other way: an unrecognised input is a miss, and a miss is slow, not wrong.
-      #
-      # ccache is installed on the box by hand (apt, 4.12.3) rather than here, so this
-      # workflow needs no root. If it is missing the compile still runs -- slowly -- and
-      # says so loudly, because a check that cannot tell "0 hits because it missed" from
-      # "0 hits because it never ran" is not a check.
       - name: Compile cache (ccache)
         id: ccache
         run: |
@@ -453,22 +491,25 @@ jobs:
         with:
           python-version: '3.13'
 
+      - name: Host Qt runtime libraries on disposable hosted runner
+        if: ${{ inputs.runner == 'hosted' }}
+        run: |
+          set -e
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends \
+            libegl1 libgl1 libglx0 libopengl0 libxkbcommon0 libfontconfig1 libdbus-1-3 \
+            libxcb-cursor0 libxcb-xinerama0 libxkbcommon-x11-0
+
       - name: Host Qt 6.11.2 (native tools only)
         id: hostqt
         run: |
-          set -e
-          if [ -d qt-host/6.11.2/gcc_64/bin ]; then
-            echo "  host Qt already present"
+          set -euo pipefail
+          if [ "${{ inputs.runner }}" = hosted ]; then
+            python3 tools/native-toolchain-inputs.py host-qt --reference-kind qt
+            python3 tools/native-input-bundle.py verify-inputs link --components emsdk host_qt
           else
-            python3 -m pip install --quiet --break-system-packages aqtinstall 2>/dev/null \
-              || python3 -m pip install --quiet aqtinstall
-            python3 -m aqt install-qt linux desktop 6.11.2 linux_gcc_64 \
-              -m qtshadertools -O "$PWD/qt-host"
+            python3 tools/native-toolchain-inputs.py host-qt
           fi
-          host="$PWD/qt-host/6.11.2/gcc_64"
-          [ -x "$host/libexec/moc" ] || [ -x "$host/bin/moc" ] || {
-            echo "::error::no moc under $host"; find qt-host -name moc | head; exit 1; }
-          echo "  QT_HOST_PATH=$host"
 
       - name: Build tools (pybind11, swig) and the ICU port
         run: |
@@ -489,11 +530,19 @@ jobs:
           # view provider calling addDisplayMode(coinNode, ...) threw. Opening a
           # document with Assembly or Draft view providers gave a BLACK VIEWPORT:
           # the app booted, the geometry loaded, and nothing drew.
-          SWIG_PIN=4.2.1        # keep in step with build-python-deps.yml
-          python3 -m pip install --quiet --break-system-packages pybind11 "swig==$SWIG_PIN" 2>/dev/null \
-            || python3 -m pip install --quiet pybind11 "swig==$SWIG_PIN"
-          python3 -c 'import pybind11; print("  pybind11:", pybind11.get_cmake_dir())'
-          swig -version | grep -i version | head -1 | sed 's/^/  swig: /'
+          if [ "${{ inputs.runner }}" = hosted ]; then
+            # Reuse the producer's exact resolved tool/transitive versions.
+            python3 tools/native-toolchain-inputs.py replay-python-tools --python '${{ steps.hostpy.outputs.python-path }}'
+            echo "$PWD/.qtvenv/bin" >> "$GITHUB_PATH"
+            . .qtvenv/bin/activate
+            python3 tools/native-input-bundle.py verify-inputs link
+          else
+            SWIG_PIN=4.2.1        # keep in step with build-python-deps.yml
+            python3 -m pip install --quiet --break-system-packages pybind11 "swig==$SWIG_PIN" 2>/dev/null \
+              || python3 -m pip install --quiet pybind11 "swig==$SWIG_PIN"
+            python3 -c 'import pybind11; print("  pybind11:", pybind11.get_cmake_dir())'
+            swig -version | grep -i version | head -1 | sed 's/^/  swig: /'
+          fi
           # Through emcc, not embuilder. embuilder builds ports with its own DEFAULT settings
           # and never reads EMCC_CFLAGS: single-threaded, and under the wasm64 toolchain
           # still wasm32 (build-freecad run 33943909532 showed lib/wasm32-emscripten/). The
@@ -511,16 +560,7 @@ jobs:
 
       - name: Fetch FreeCAD ${{ steps.ver.outputs.tag }}
         run: |
-          set -e
-          if [ -e deps/src/freecad/CMakeLists.txt ]; then
-            echo "  freecad: present"
-          else
-            mkdir -p deps/src/freecad
-            curl -fsSL -o /tmp/freecad.tar.gz \
-              "https://github.com/FreeCAD/FreeCAD/archive/refs/tags/${{ steps.ver.outputs.tag }}.tar.gz"
-            tar xzf /tmp/freecad.tar.gz -C deps/src/freecad --strip-components=1
-          fi
-          ls deps/src/freecad/CMakeLists.txt
+          python3 tools/fetch-pinned-freecad.py freecad
 
       # GitHub source tarballs carry no submodules. build-freecad.yml needs only GSL because
       # it builds with BUILD_ASSEMBLY=OFF; the production configure has it ON, and Assembly
@@ -1215,6 +1255,48 @@ jobs:
       # assets publish fine while a 110 MB artifact upload is refused. Both deploy paths
       # (Jenkins for dev, deploy-ovh.yml for prod) consume the RELEASE, so nothing in the
       # pipeline ever needed this step.
+
+      # Hosted VMs disappear after the job. Preserve an unpublished diagnostic
+      # runtime even if a later browser gate fails; its gate outcomes travel with it.
+      - name: Bind hosted native diagnostic artifact to source and gate outcomes
+        id: native_diagnostic_bind
+        if: ${{ always() && inputs.runner == 'hosted' && steps.link.outcome == 'success' && hashFiles('build-freecad-gui-weh/bin/FreeCAD.wasm') != '' }}
+        run: |
+          set -euo pipefail
+          mkdir -p native-diagnostic/linked
+          cp build-freecad-gui-weh/bin/FreeCAD.js build-freecad-gui-weh/bin/FreeCAD.wasm build-freecad-gui-weh/bin/FreeCAD.data native-diagnostic/linked/
+          if [ -s gate-serve/FreeCAD.wasm ]; then
+            cp -R gate-serve native-diagnostic/runtime
+            cp play-gui/legal.html LICENSE NOTICE native-diagnostic/runtime/
+            cp -R LICENSES native-diagnostic/runtime/
+          fi
+          python3 tools/native-toolchain-inputs.py environment
+          python3 tools/native-input-bundle.py verify-inputs link
+          cp .native-build-origin.json .native-toolchain-inputs.json native-diagnostic/
+          cp -R .native-restored native-diagnostic/producer-receipts
+          python3 tools/native-input-bundle.py bind-diagnostic link --folder native-diagnostic
+          git rev-parse HEAD > native-diagnostic/SOURCE-COMMIT.txt
+          git status --porcelain --untracked-files=no > native-diagnostic/SOURCE-WORKTREE.txt
+          git status --porcelain > native-diagnostic/SOURCE-WORKTREE-ALL.txt
+          sha256sum patches/qt-*.patch patches/freecad.patch > native-diagnostic/SOURCE-PATCHES.sha256
+          printf '%s\n' \
+            'UNPUBLISHED DIAGNOSTIC BUILD: browser outcomes are evidence, not release approval.' \
+            'boot=${{ steps.bootgate.outcome }}' \
+            'render=${{ steps.render.outcome }}' \
+            'project3d=${{ steps.project3d.outcome }}' \
+            'uipaint=${{ steps.uipaint.outcome }}' > native-diagnostic/GATE-OUTCOMES.txt
+          (cd native-diagnostic && find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS)
+
+      - name: Upload unpublished hosted native diagnostic runtime
+        if: ${{ always() && inputs.runner == 'hosted' && steps.native_diagnostic_bind.outcome == 'success' && steps.link.outcome == 'success' && hashFiles('native-diagnostic/linked/FreeCAD.wasm') != '' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: cad1-native-diagnostic-${{ github.sha }}
+          path: native-diagnostic/
+          include-hidden-files: true
+          compression-level: 0
+          retention-days: 7
+          if-no-files-found: error
 
       - name: Upload build logs
         if: always()

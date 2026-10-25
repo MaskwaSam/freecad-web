@@ -1,0 +1,30 @@
+{
+  "format": 1,
+  "qt_source": {
+    "version": "6.11.2",
+    "url": "https://download.qt.io/archive/qt/6.11/6.11.2/single/qt-everywhere-src-6.11.2.tar.xz",
+    "sha256": "6dcfbca271d76a6502741a2c0dc6fc98ef7dd0b7b4cfd0abcebb285a86a26f33",
+    "bytes": 1019661552
+  },
+  "emsdk": {
+    "url": "https://github.com/emscripten-core/emsdk.git",
+    "commit": "5eb0bde7585670252e8ba05e9d361627bffd08b5",
+    "version": "6.0.9",
+    "release_hash": "f04ea239d533260dd1db760dd2d668d5f9a88d6b"
+  },
+  "aqtinstall": {
+    "version": "3.3.0",
+    "filename": "aqtinstall-3.3.0-py3-none-any.whl",
+    "url": "https://files.pythonhosted.org/packages/7f/70/849fa1005fa197fc28a744fd69598ab9da883b737a1ab9461d88721ddd0b/aqtinstall-3.3.0-py3-none-any.whl",
+    "sha256": "e88dbd87226f276fdd5d05347a44578d390d93a7f176e9476fbda0a7c9635f69",
+    "bytes": 71789
+  },
+  "host_qt": {
+    "version": "6.11.2",
+    "host": "linux",
+    "target": "desktop",
+    "architecture": "linux_gcc_64",
+    "modules": ["qtshadertools"],
+    "archive_verification": "aqt default official hash check plus recorded complete SHA256/size archive identities"
+  }
+}
