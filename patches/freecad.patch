@@ -1432,54 +1432,162 @@ diff -ruNp a/src/Gui/ExpressionCompleter.cpp b/src/Gui/ExpressionCompleter.cpp
 diff -ruNp a/src/Gui/FileDialog.cpp b/src/Gui/FileDialog.cpp
 --- a/src/Gui/FileDialog.cpp
 +++ b/src/Gui/FileDialog.cpp
-@@ -48,6 +48,15 @@
+@@ -48,6 +48,93 @@
  #include "MainWindow.h"
  #include "Tools.h"
  
 +#ifdef __EMSCRIPTEN__
 +# include <emscripten.h>
-+// Browser build: Qt-for-WebAssembly's modal file dialogs need ASYNCIFY (absent in this
-+// multithread build) and abort with "emscripten_sleep needs async". The Qt event loop runs
-+// on the MAIN thread here (no PROXY_TO_PTHREAD), so file dialogs are routed to the main-thread
-+// JS file bridge in the harness (freecad-gui.html), which opens the real browser file picker
-+// within the current click gesture and handles the load/download. See fcwebOpen / fcwebRegisterSave.
++# include <QComboBox>
++# include <QDialog>
++# include <QDialogButtonBox>
++# include <QFormLayout>
++# include <QLabel>
++# include <QLineEdit>
++# include <QPushButton>
++# include <string>
++# include <vector>
++// Qt JSPI supports the native modal dialog. Browser file delivery remains in
++// fcwebRegisterSave; opening files keeps the existing browser-picker bridge.
 +#endif
 +
++#ifdef __EMSCRIPTEN__
++namespace {
++// These plain-string rules are shared by the dialog and its offline fixtures.
++std::string fcwebSaveLower(std::string value)
++{
++    for (char& c : value) {
++        if (c >= 'A' && c <= 'Z') c = char(c - 'A' + 'a');
++    }
++    return value;
++}
++
++std::vector<std::string> fcwebSaveSuffixes(const std::string& filter)
++{
++    std::vector<std::string> suffixes;
++    std::size_t pos = 0;
++    while ((pos = filter.find("*.", pos)) != std::string::npos) {
++        const std::size_t begin = pos + 2;
++        std::size_t end = begin;
++        auto word = [](char c) {
++            return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')
++                || (c >= '0' && c <= '9') || c == '_';
++        };
++        while (end < filter.size() && (word(filter[end])
++               || (filter[end] == '.' && end > begin && end + 1 < filter.size()
++                   && word(filter[end + 1])))) ++end;
++        if (end > begin) suffixes.push_back(filter.substr(begin, end - begin));
++        pos = end;
++    }
++    return suffixes;
++}
++
++bool fcwebSaveNameValid(const std::string& name)
++{
++    if (name.empty() || name == "." || name == ".." || name.back() == '.'
++        || name.front() == ' ' || name.back() == ' ') return false;
++    for (unsigned char c : name) {
++        if (c < 32 || c == 127 || std::string("/\\:*?\"<>|").find(char(c)) != std::string::npos)
++            return false;
++    }
++    return true;
++}
++
++std::string fcwebSaveInitialName(const std::string& basename, bool directory, bool implicit)
++{
++    return directory || implicit || basename.empty() || basename == "_dl"
++        ? "document" : basename;
++}
++
++std::string fcwebSaveNameForFormat(const std::string& name, const std::string& filter,
++                                  const std::vector<std::string>& filters)
++{
++    const auto suffixes = fcwebSaveSuffixes(filter);
++    if (suffixes.empty()) return name;
++    const std::string lower = fcwebSaveLower(name);
++    auto matches = [&lower](const std::string& suffix) {
++        const std::string ending = "." + fcwebSaveLower(suffix);
++        return lower.size() > ending.size()
++            && lower.compare(lower.size() - ending.size(), ending.size(), ending) == 0;
++    };
++    for (const auto& suffix : suffixes) {
++        if (matches(suffix)) return name;
++    }
++    std::size_t remove = 0;
++    for (const auto& offered : filters) {
++        for (const auto& suffix : fcwebSaveSuffixes(offered)) {
++            if (matches(suffix) && suffix.size() + 1 > remove) remove = suffix.size() + 1;
++        }
++    }
++    return name.substr(0, name.size() - remove) + "." + suffixes.front();
++}
++} // namespace
++#endif
  
  using namespace Gui;
  
-@@ -285,6 +294,39 @@ QString FileDialog::getSaveFileName(
+@@ -285,6 +372,69 @@ QString FileDialog::getSaveFileName(
      // NOTE: We must not change the specified file name afterwards as we may return the name of an
      // already existing file. Hence we must extract the first matching suffix from the filter list
      // and append it before showing the file dialog.
 +#ifdef __EMSCRIPTEN__
 +    {
-+        // Return a real staging path under the IDBFS home; the caller writes the file there in
-+        // whatever format it wants (FCStd / STEP / STL / ...), and the JS watcher downloads it
-+        // to the user's machine once written. This makes File > Save / Save As / Export all work.
-+        QString base = QFileInfo(dirName).fileName();
-+        if (base.isEmpty()) {
-+            base = QStringLiteral("document");
-+        }
-+        if (!base.contains(QLatin1Char('.'))) {
-+            // Export hands a directory or bare name; the format lives only in the
-+            // filter string ("STL Mesh (*.stl);;..."). Without a suffix the export
-+            // machinery cannot pick a writer and silently writes NOTHING -- File >
-+            // Export did nothing at all until 2026-08-30. Take the selected
-+            // filter's first pattern, falling back to the filter list's first.
-+            const QString& pick = (selectedFilter && !selectedFilter->isEmpty())
-+                                    ? *selectedFilter : filter;
-+            for (const QString* src : { &pick, &filter }) {
-+                int star = src->indexOf(QStringLiteral("*."));
-+                if (star >= 0) {
-+                    int i = star + 2, j = i;
-+                    while (j < src->size() && src->at(j).isLetterOrNumber()) ++j;
-+                    if (j > i) { base += QLatin1Char('.') + src->mid(i, j - i).toLower(); break; }
-+                }
-+            }
-+        }
-+        QString outPath = QStringLiteral("/home/web_user/_dl/") + base;
-+        QByteArray op = outPath.toUtf8();
++        // A small Qt dialog preserves the native writer/filter contract without a
++        // filesystem browser or its background model. JSPI supports this modal call.
++        const QStringList formats = filter.split(QLatin1String(";;"), Qt::SkipEmptyParts);
++        std::vector<std::string> rules;
++        for (const auto& format : formats) rules.push_back(format.toUtf8().toStdString());
++        auto bytes = [](const QString& value) { return value.toUtf8().toStdString(); };
++        auto text = [](const std::string& value) { return QString::fromUtf8(value.c_str()); };
++        const QFileInfo initial(dir);
++        const bool directory = initial.isDir() || dir.endsWith(QLatin1Char('/'))
++            || dir.endsWith(QLatin1Char('\\'))
++            || QDir::cleanPath(dir) == QStringLiteral("/home/web_user/_dl")
++            || (!getWorkingDirectory().isEmpty()
++                && QDir::cleanPath(dir) == QDir::cleanPath(getWorkingDirectory()));
++        QDialog dialog(parent);
++        dialog.setWindowTitle(windowTitle);
++        dialog.setWindowModality(Qt::WindowModal);
++        QFormLayout layout(&dialog);
++        QLineEdit name(text(fcwebSaveInitialName(bytes(initial.fileName()), directory, dir.isEmpty())), &dialog);
++        QComboBox format(&dialog);
++        format.addItems(formats);
++        if (selectedFilter && formats.contains(*selectedFilter)) format.setCurrentText(*selectedFilter);
++        QLabel help(&dialog);
++        help.setWordWrap(true);
++        QDialogButtonBox buttons(QDialogButtonBox::Save | QDialogButtonBox::Cancel, &dialog);
++        layout.addRow(FileDialog::tr("Filename"), &name);
++        layout.addRow(FileDialog::tr("File format"), &format);
++        layout.addRow(&help);
++        layout.addRow(&buttons);
++        auto normalized = [&]() {
++            return fcwebSaveNameForFormat(bytes(name.text().trimmed()), bytes(format.currentText()), rules);
++        };
++        auto refresh = [&]() {
++            const bool concrete = !fcwebSaveSuffixes(bytes(format.currentText())).empty();
++            const bool valid = fcwebSaveNameValid(bytes(name.text().trimmed()));
++            buttons.button(QDialogButtonBox::Save)->setEnabled(concrete && valid);
++            help.setText(!concrete ? FileDialog::tr("Choose a file format.")
++                : !valid ? FileDialog::tr("Enter a filename without folders.") : QString());
++        };
++        QObject::connect(&name, &QLineEdit::textChanged, &dialog, refresh);
++        QObject::connect(&format, &QComboBox::currentIndexChanged, &dialog, [&]() {
++            if (fcwebSaveNameValid(bytes(name.text().trimmed()))
++                && !fcwebSaveSuffixes(bytes(format.currentText())).empty()) name.setText(text(normalized()));
++            refresh();
++        });
++        QObject::connect(&buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
++        QObject::connect(&buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
++        if (fcwebSaveNameValid(bytes(name.text().trimmed()))) name.setText(text(normalized()));
++        refresh();
++        name.selectAll();
++        name.setFocus();
++        if (dialog.exec() != QDialog::Accepted) return {};
++        if (fcwebSaveSuffixes(bytes(format.currentText())).empty()
++            || !fcwebSaveNameValid(bytes(name.text().trimmed()))) return {};
++        const QString outPath = QStringLiteral("/home/web_user/_dl/") + text(normalized());
++        if (selectedFilter) *selectedFilter = format.currentText();
++        const QByteArray op = outPath.toUtf8();
 +        EM_ASM({ if (typeof window !== 'undefined' && window.fcwebRegisterSave) window.fcwebRegisterSave(UTF8ToString($0)); }, op.constData());
 +        setWorkingDirectory(outPath);
 +        return outPath;
@@ -1488,7 +1596,7 @@ diff -ruNp a/src/Gui/FileDialog.cpp b/src/Gui/FileDialog.cpp
      QString file;
      if (DialogOptions::dontUseNativeFileDialog()) {
          QList<QUrl> urls = fetchSidebarUrls();
-@@ -376,6 +401,15 @@ QString FileDialog::getOpenFileName(
+@@ -376,6 +526,15 @@ QString FileDialog::getOpenFileName(
          windowTitle = FileDialog::tr("Open");
      }
  
@@ -1504,7 +1612,7 @@ diff -ruNp a/src/Gui/FileDialog.cpp b/src/Gui/FileDialog.cpp
      QString file;
      if (DialogOptions::dontUseNativeFileDialog()) {
          QList<QUrl> urls = fetchSidebarUrls();
-@@ -441,6 +475,14 @@ QStringList FileDialog::getOpenFileNames
+@@ -441,6 +600,14 @@ QStringList FileDialog::getOpenFileNames
          windowTitle = FileDialog::tr("Open");
      }
  
