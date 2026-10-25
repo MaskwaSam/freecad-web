@@ -220,7 +220,7 @@
     "tools/wasm-indirect-calls.py": "5356250c1b2e3462332f66e30b2ead24c775f9540962ae779f0735dfac0c5e91",
     "tools/wasm-table-arity.py": "8799ceb8f82c100736132afedd29116e04ee0e0beaebad54d6406e48c1d0a680"
   },
-  "new_recipe_sha256": "9b27b46c637c193e45ccf76b8d203e79857efa74bf14b47d00144dede0193004",
+  "new_recipe_sha256": "ff14e73123a779ca52e37d51800b629e34a26d548f359635b0c25252f51c0c71",
   "new_recipe_files": {
     ".github/workflows/box-diagnostics.yml": "25cb57e6f95a2541b360371f10cf0418a272a50b6e33c4d6ec4764940b09515e",
     ".github/workflows/box-maintenance.yml": "4b4be9fdc6fce3f3f9b246e1270fddc25ff873d49c4c912c0300ef0a946bf856",
@@ -305,7 +305,7 @@
     "patches/coin3d.patch": "d2485aef5876be510eb301474d3ed5313c4fb46624b876a80c147e5af205e9cb",
     "patches/cpython-ctypes-wasm.patch": "bd2af54e46beb65a096b72fc8ac75837366e83e26b58d779603000fda905505f",
     "patches/cpython-trampoline-wasm64.patch": "d1e7fad7c31367efb6d88a9ac13399830c6a127546041be8a9e149caeb547f80",
-    "patches/freecad.patch": "b9e9e3bdebf59d914e8565dd6061db33feb571cddb7a17fe66d96ee90638fa3a",
+    "patches/freecad.patch": "b418e05b2d84e1242e21e8994ee45d1526bf849b32d1db60456e7ac9ee9ea022",
     "patches/freecad.version": "e70ec2b520df9d50b9e16f08b3cb1c6297a30d01a400c1a7fdb2ffee18a25d3d",
     "patches/ifcopenshell-schema-code-size.patch": "35e0d9190f31203f35d12a31e52f635c558cd9a6a6866bc78ded6daa53bb92ee",
     "patches/libffi-wasm64-em-js-deps.patch": "f5fca028452b7229a5135e9ed810e84355659a47631b8c4de6ad66ca4917afb8",
@@ -402,7 +402,7 @@
     "tools/gen-dialog-shims.py": "733fcfe3d60e887b3f9cbf7152708bcbda822da5467a77fc61a864ae34e82a34",
     "tools/gen-gl-compat.py": "32bd0985e5ad32402f231701eda82d61ef883c1e46fd600745d25cad51c94ae1",
     "tools/gl-noop-inventory.py": "62e573d267e5ed4894ba391694950f5d923608267f1a6673a6a868d1a652e61f",
-    "tools/native-input-bundle.py": "b76cb24aa074913f8c2c5d7b20438eae743e82bd57488517a8f31a22ae9596db",
+    "tools/native-input-bundle.py": "a8ce66cc71c2d5409611a0f9e097348dc0639854352abab29379dd908cd9a3d0",
     "tools/native-source-pins.json": "773b30f7af9c0fe15e3f53c2126a3b37e5eef81412533ad4b079805d94a36884",
     "tools/native-toolchain-inputs.py": "9e435afe3f30ca4f75006cd94cac2a8f62d30718c0fe644f4f803459e07be53e",
     "tools/native-toolchain-pins.json": "84b2cf9ebf0034b65bcd7a8a8473d9d4a93170ad27b92e44c510429c0733854c",
@@ -432,13 +432,17 @@
       "before": "822a083b3c9ed5e0b60fe54c290159e5aee29795a8faff1d20fda1f020f1c37d",
       "after": "99fd91a0f277a7cb38407b1bd8328fedc527be3ecf1147e677af42c7c177054a"
     },
+    "patches/freecad.patch": {
+      "before": "b9e9e3bdebf59d914e8565dd6061db33feb571cddb7a17fe66d96ee90638fa3a",
+      "after": "b418e05b2d84e1242e21e8994ee45d1526bf849b32d1db60456e7ac9ee9ea022"
+    },
     "patches/qt-wasm-zz-pointer-lifetime-v2-r3.patch": {
       "before": "98a8a1eadc75737d8cb545506c76fb25dfe504dc1d12c75a96276acc0f0bfbc9",
       "after": "2b1836b0691567c3ffa5b66fcfdd78d3d1cb142aac26819ffbac686675e2761f"
     },
     "tools/native-input-bundle.py": {
       "before": "b71613f0d7b17a24ecdbab8e23a967ff0fa83f827d98a4cee9cf9c2b1a168596",
-      "after": "b76cb24aa074913f8c2c5d7b20438eae743e82bd57488517a8f31a22ae9596db"
+      "after": "a8ce66cc71c2d5409611a0f9e097348dc0639854352abab29379dd908cd9a3d0"
     }
   },
   "old_git_tree": {

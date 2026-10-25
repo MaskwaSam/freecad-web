@@ -1084,6 +1084,28 @@ diff -ruNp a/src/Gui/Application.cpp b/src/Gui/Application.cpp
      QByteArray output;
      if (context.category && strcmp(context.category, "default") != 0) {
          output.append('(');
+@@ -2218,6 +2244,21 @@
+ #endif
+             break;
+         case QtWarningMsg:
++#if defined(__EMSCRIPTEN__)
++            // QAccessibleTree::indexOfChild returns -1 for interfaces outside its semantic
++            // child list. Qt 6.11.2 logs these two valid wasm bridge probes with a misleading
++            // QAccessibleTable label. Keep them as developer warnings in logs, but do not
++            // turn them into student notification popups.
++            if (output.startsWith(
++                    "WARNING QAccessibleTable::indexOfChild invalid child QAccessible::Client "
++                )
++                || output.startsWith(
++                    "WARNING QAccessibleTable::indexOfChild invalid child QAccessible::Tree "
++                )) {
++                Base::Console().developerWarning("Qt accessibility", "%s\n", output.constData());
++                break;
++            }
++#endif
+             Base::Console().warning("%s\n", output.constData());
+             break;
+         case QtCriticalMsg:
 @@ -2550,7 +2574,31 @@ void Application::runApplication()
      Base::Console().log("Init: Creating Gui::Application and QApplication\n");
  
