@@ -1,6 +1,6 @@
 {
   "format": 1,
-  "purpose": "Exact successful 4d Python artifact admitted across only quoted link-choice and retention-helper changes. Original producer manifest, archive, receipt, tool identities, dependency receipts, recipe bundle, and b5fc policy remain unchanged. This is an unpublished diagnostic output bridge, not a native rebuild or runtime acceptance.",
+  "purpose": "Exact unchanged original 4d Python producer output and original old-Qt dependency/b5fc bundle; selected repaired Qt is admitted separately by an explicit private-implementation header/configuration bridge. Python was not rebuilt against the repaired Qt.",
   "producer_repository": "MaskwaSam/freecad-web",
   "producer_source_commit": "4d36689e9667e9f2503c434a8630b590940353d1",
   "producer_run_id": "40043926298",
@@ -220,7 +220,7 @@
     "tools/wasm-indirect-calls.py": "5356250c1b2e3462332f66e30b2ead24c775f9540962ae779f0735dfac0c5e91",
     "tools/wasm-table-arity.py": "8799ceb8f82c100736132afedd29116e04ee0e0beaebad54d6406e48c1d0a680"
   },
-  "new_recipe_sha256": "c7d4e0d6073004ef645bb89a3ac28f48a5ac3cff824b0a25d2879018b4d911b7",
+  "new_recipe_sha256": "9b27b46c637c193e45ccf76b8d203e79857efa74bf14b47d00144dede0193004",
   "new_recipe_files": {
     ".github/workflows/box-diagnostics.yml": "25cb57e6f95a2541b360371f10cf0418a272a50b6e33c4d6ec4764940b09515e",
     ".github/workflows/box-maintenance.yml": "4b4be9fdc6fce3f3f9b246e1270fddc25ff873d49c4c912c0300ef0a946bf856",
@@ -329,7 +329,7 @@
     "patches/qt-wasm-fbo-depth-attachment.patch": "ae1466f4c044c423cc7f23de4cb74b3faadefdee22e8fa8508f33c5ce708b65a",
     "patches/qt-wasm-gl-context-rehome.patch": "dc60c2e2ee83f1ed49b86c2bdb92185591caf9bf4000b16e72121de8c8a42136",
     "patches/qt-wasm-transient-children-stay-above.patch": "fe408534cd766996ac3e2fc84244eabc5b2e5e10b53677d91584c8a95be663cc",
-    "patches/qt-wasm-zz-pointer-lifetime-v2-r3.patch": "98a8a1eadc75737d8cb545506c76fb25dfe504dc1d12c75a96276acc0f0bfbc9",
+    "patches/qt-wasm-zz-pointer-lifetime-v2-r3.patch": "2b1836b0691567c3ffa5b66fcfdd78d3d1cb142aac26819ffbac686675e2761f",
     "patches/regen.sh": "c8eba514dc9bd14d00dab8f28dcbceb0f32619a2ee0c5bcb671f850d5ccaaa59",
     "patches/vtk-expat-wasm-xmlsize.patch": "fba7cc4d7c5b99e96e441157712ec8a7b091e20704a2d5f65218810be87f2703",
     "patches/vtk-fmt-char8-traits.patch": "2fe228f94804015107b27c25bbe4abd215916468a67639c0124447d3a8e63acc",
@@ -402,7 +402,7 @@
     "tools/gen-dialog-shims.py": "733fcfe3d60e887b3f9cbf7152708bcbda822da5467a77fc61a864ae34e82a34",
     "tools/gen-gl-compat.py": "32bd0985e5ad32402f231701eda82d61ef883c1e46fd600745d25cad51c94ae1",
     "tools/gl-noop-inventory.py": "62e573d267e5ed4894ba391694950f5d923608267f1a6673a6a868d1a652e61f",
-    "tools/native-input-bundle.py": "0c307ee05c37a54d2a5926d1fd29c216793811dd0c80c94bd7880cbd73f6d336",
+    "tools/native-input-bundle.py": "b76cb24aa074913f8c2c5d7b20438eae743e82bd57488517a8f31a22ae9596db",
     "tools/native-source-pins.json": "773b30f7af9c0fe15e3f53c2126a3b37e5eef81412533ad4b079805d94a36884",
     "tools/native-toolchain-inputs.py": "9e435afe3f30ca4f75006cd94cac2a8f62d30718c0fe644f4f803459e07be53e",
     "tools/native-toolchain-pins.json": "84b2cf9ebf0034b65bcd7a8a8473d9d4a93170ad27b92e44c510429c0733854c",
@@ -432,9 +432,13 @@
       "before": "822a083b3c9ed5e0b60fe54c290159e5aee29795a8faff1d20fda1f020f1c37d",
       "after": "99fd91a0f277a7cb38407b1bd8328fedc527be3ecf1147e677af42c7c177054a"
     },
+    "patches/qt-wasm-zz-pointer-lifetime-v2-r3.patch": {
+      "before": "98a8a1eadc75737d8cb545506c76fb25dfe504dc1d12c75a96276acc0f0bfbc9",
+      "after": "2b1836b0691567c3ffa5b66fcfdd78d3d1cb142aac26819ffbac686675e2761f"
+    },
     "tools/native-input-bundle.py": {
       "before": "b71613f0d7b17a24ecdbab8e23a967ff0fa83f827d98a4cee9cf9c2b1a168596",
-      "after": "0c307ee05c37a54d2a5926d1fd29c216793811dd0c80c94bd7880cbd73f6d336"
+      "after": "b76cb24aa074913f8c2c5d7b20438eae743e82bd57488517a8f31a22ae9596db"
     }
   },
   "old_git_tree": {
