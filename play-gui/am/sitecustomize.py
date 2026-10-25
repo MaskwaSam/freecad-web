@@ -13,6 +13,19 @@ Kept to what MUST precede the Mod loop. Everything else stays in fcweb_am_boot.
 """
 import sys
 
+# The page stages /fcweb-am before Python starts. Guard the command class on its
+# normal first import, before InitGui registers it in the native command registry.
+# SystemExit is deliberate: site swallows ordinary hook errors, which would leave
+# the shipped unsafe command callable. A failed guard must stop this startup.
+if sys.platform == "emscripten":
+    try:
+        sys.path.insert(0, "/fcweb-am")
+        import fcweb_am_boot
+        fcweb_am_boot.install_guard()
+    except BaseException as _guard_error:
+        print("[fcweb] Addon Manager startup safety guard FAILED: %r" % (_guard_error,))
+        raise SystemExit("Cannot start FreeCAD safely; reload to retry the Addon Manager safety files")
+
 # urllib3 v2 (__init__.py line 208 in 2.8.0) sees sys.platform == "emscripten" and imports
 # its Pyodide backend, which needs Pyodide's `js` and `pyodide.ffi`; this build is not
 # Pyodide, so `import requests` raised ModuleNotFoundError inside the Lens add-on's

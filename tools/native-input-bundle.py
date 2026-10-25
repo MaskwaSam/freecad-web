@@ -65,16 +65,16 @@ COMPATIBILITY_RECIPE = '812765ae50b7868410a2376b99fc8332ed8f30abc29d21e2f0222446
 COMPATIBILITY_GIT_TREE = '4764b677272ad3fb236358696e6518b85f45ab2d301ce5d6bd6e81f35fd014a5'
 COMPATIBILITY_RUNS = {'cpp': '40016791813'}
 QT_PRODUCER_REBUILD_RECIPE_PATHS = {'patches/qt-wasm-zz-pointer-lifetime-v2-r3.patch', 'tools/native-input-bundle.py', '.github/workflows/link-freecad.yml', 'configure-pivy-weh.sh', '.github/workflows/build-python-deps.yml', 'configure-ifcopenshell-weh.sh'}
-COMPATIBILITY_RECIPE_PATHS = QT_PRODUCER_REBUILD_RECIPE_PATHS | {'patches/freecad.patch'}
+COMPATIBILITY_RECIPE_PATHS = QT_PRODUCER_REBUILD_RECIPE_PATHS | {'patches/freecad.patch', 'tools/boot-gate.py'}
 PYTHON_COMPATIBILITY_FILE = 'native-python-output-compatibility.json'
 COMPATIBILITY_GIT_PATHS = COMPATIBILITY_RECIPE_PATHS | {
-    COMPATIBILITY_FILE, PYTHON_COMPATIBILITY_FILE, 'native-qt-screen-identity-compatibility.json', 'play-gui/am/fcweb_share.py', 'play-gui/freecad-gui.html'}
+    COMPATIBILITY_FILE, PYTHON_COMPATIBILITY_FILE, 'native-qt-screen-identity-compatibility.json', 'play-gui/am/fcweb_share.py', 'play-gui/freecad-gui.html', 'play-gui/am/fcweb_am_boot.py', 'play-gui/am/sitecustomize.py'}
 PYTHON_COMPATIBILITY_SOURCE = '4d36689e9667e9f2503c434a8630b590940353d1'
 PYTHON_COMPATIBILITY_RUN = '40043926298'
 PYTHON_COMPATIBILITY_RECIPE = '79d786cd5caed55e08554eaff4c78bcd24d4c7fe7ca17a61f50f1861968220aa'
 PYTHON_COMPATIBILITY_GIT_TREE = 'ec55a52701ceda114ce8c1415d53412dfa73d141c33cf5afbb0734d7e2e71303'
-PYTHON_COMPATIBILITY_RECIPE_PATHS = {'patches/freecad.patch', 'patches/qt-wasm-zz-pointer-lifetime-v2-r3.patch', 'tools/native-input-bundle.py', '.github/workflows/link-freecad.yml'}
-PYTHON_COMPATIBILITY_GIT_PATHS = PYTHON_COMPATIBILITY_RECIPE_PATHS | {COMPATIBILITY_FILE, PYTHON_COMPATIBILITY_FILE, 'native-qt-screen-identity-compatibility.json'}
+PYTHON_COMPATIBILITY_RECIPE_PATHS = {'patches/freecad.patch', 'patches/qt-wasm-zz-pointer-lifetime-v2-r3.patch', 'tools/native-input-bundle.py', '.github/workflows/link-freecad.yml', 'tools/boot-gate.py'}
+PYTHON_COMPATIBILITY_GIT_PATHS = PYTHON_COMPATIBILITY_RECIPE_PATHS | {COMPATIBILITY_FILE, PYTHON_COMPATIBILITY_FILE, 'native-qt-screen-identity-compatibility.json', 'play-gui/freecad-gui.html', 'play-gui/am/fcweb_am_boot.py', 'play-gui/am/sitecustomize.py'}
 # Exact original manifests remain authoritative. Neither a matching current recipe
 # nor an independently self-consistent replacement manifest grants admission.
 PRODUCER_MANIFEST_SHA256 = {
@@ -98,9 +98,9 @@ QT_PRODUCER_RUN = '40152646092'
 QT_PRODUCER_RECIPE = '0b5133f0194a30b2911a6e217123c9fad9d380780f7b9a14b241cd62acf5b885'
 QT_PRODUCER_GIT_TREE = 'be05239ccf970fc130937546f7555af4ded29108d7dc324cc99b0d38ed8a433f'
 QT_PRODUCER_OUTPUT = {'producer_manifest_raw_sha256': '2eaa9eb9813d3124adb0f9e7ee0f5b633424637963f52257c5e5f11b7dec8c56', 'producer_manifest_raw_bytes': 4944979, 'producer_manifest_canonical_sha256': '98a3ab19334f04beca9ee854448f22c354dc43ed059d1a210f193d6e1cd686b4', 'producer_archive_sha256': 'abedceebb02a3c72b711695ab4b39d0e969f2725455605ec7c7e48a4df27e288', 'producer_archive_bytes': 65744050, 'producer_artifact_id': '12583348593', 'producer_artifact_zip_sha256': 'c137229330f42c6953c90ed1e398b83e0daf1c090f4fbfc7fd0d1efe364ab23d', 'producer_artifact_zip_bytes': 70689279}
-QT_CONSUMER_RECIPE_PATHS = {'patches/freecad.patch', 'tools/native-input-bundle.py'}
+QT_CONSUMER_RECIPE_PATHS = {'patches/freecad.patch', 'tools/native-input-bundle.py', 'tools/boot-gate.py'}
 QT_CONSUMER_GIT_PATHS = QT_CONSUMER_RECIPE_PATHS | {
-    COMPATIBILITY_FILE, PYTHON_COMPATIBILITY_FILE, QT_COMPATIBILITY_FILE}
+    COMPATIBILITY_FILE, PYTHON_COMPATIBILITY_FILE, QT_COMPATIBILITY_FILE, 'play-gui/freecad-gui.html', 'play-gui/am/fcweb_am_boot.py', 'play-gui/am/sitecustomize.py'}
 QT_ORIGINAL_RECEIPT_SHA256 = '91301e9f470c3df0fdd2170e7ee64137394348bfef11eb45672cc980a8135355'
 QT_ORIGINAL_RECEIPT_CANONICAL_SHA256 = 'e2436840370ee17263bee177f36322b95682ab79bab269fa49e7d350143f1b88'
 QT_PRIVATE_PATCH = 'patches/qt-wasm-zz-pointer-lifetime-v2-r3.patch'
