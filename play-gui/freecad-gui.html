@@ -6393,15 +6393,36 @@ window.fcRunPy = fcRunPy;
       });
     }catch(e){ return null; }
   }
+  function downloadExportPath(path){ return /\.(pdf|stl)$/i.test(path); }
+  function saveFailure(message){
+    try{ if(window.fcwebNotify){ window.fcwebNotify(message,'warn',[],{timeout:0}); return; } }catch(e){}
+    try{ alert(message); }catch(e){}
+  }
   function registerSave(path){
     if(!ready()) return;
     var m=window.fcInstance, FS=m.FS, dir=path.replace(/\/[^\/]*$/,'');
     try{ FS.mkdirTree ? FS.mkdirTree(dir) : FS.mkdir(dir); }catch(e){}
-    if(!(path in pendingSaves)) pendingSaves[path]=null;
-    // Only prompt when we don't already have a destination for this path: FreeCAD calls
-    // getSaveFileName for Save As/Export/first save, then writes the same path on later
-    // Ctrl+S without asking — matching desktop, those re-saves go to the chosen file silently.
-    if(!(path in saveTargets)) saveTargets[path]=pickSaveTarget(path);
+    if(downloadExportPath(path)){
+      // Each explicit PDF/STL export offers a normal browser download of new bytes.
+      var name=path.replace(/^.*\//,'');
+      try{
+        if(FS.readdir(dir).indexOf(name)>=0){
+          try{ FS.unlink(path); }catch(e){ if(FS.readdir(dir).indexOf(name)>=0) throw e; }
+        }
+        if(FS.readdir(dir).indexOf(name)>=0) throw Error('prior export staging file remains');
+      }catch(e){
+        delete pendingSaves[path]; delete saveTargets[path];
+        try{ console.warn('export preparation failed for '+name+': '+e); }catch(_){}
+        saveFailure('Could not prepare '+name+' for export. Save your document, reload CAD, and try again.');
+        return;
+      }
+      pendingSaves[path]=null;
+      saveTargets[path]=null;
+    }else{
+      // Preserve existing native Save/Save As destination caching.
+      if(!(path in pendingSaves)) pendingSaves[path]=null;
+      if(!(path in saveTargets)) saveTargets[path]=pickSaveTarget(path);
+    }
     ensureSaveWatcher();
   }
   function downloadBytes(path, bytes){
@@ -6411,21 +6432,29 @@ window.fcRunPy = fcRunPy;
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(function(){URL.revokeObjectURL(a.href);},15000);
   }
-  // Write bytes to the user's chosen file; falls back to a download when the picker is
-  // unavailable (non-Chromium). Returns true if handled, false to use the download path.
+  // Write to a chosen native-save target; PDF/STL exports deliberately have none.
+  // Return false to use the normal browser-download path when no target is selected.
   function writeToTarget(path, bytes){
     var t=saveTargets[path];
     if(!t) return false;
     t.then(function(h){
-      if(h==='cancelled') return;                  // user cancelled -> don't write anywhere
-      if(!h){ downloadBytes(path, bytes); return; } // picker unusable -> plain download
-      return Promise.resolve(h.queryPermission && h.queryPermission({mode:'readwrite'}))
-        .then(function(st){ return (st && st!=='granted' && h.requestPermission)
-          ? h.requestPermission({mode:'readwrite'}) : st; })
+      if(h==='cancelled') return;
+      if(!h){ downloadBytes(path,bytes); return; }
+      return Promise.resolve()
+        .then(function(){ return h.queryPermission ? h.queryPermission({mode:'readwrite'}) : (h.requestPermission ? 'prompt' : 'granted'); })
+        .then(function(st){
+          if(st==='granted') return;
+          if(!h.requestPermission) throw Error('write permission not granted');
+          return Promise.resolve(h.requestPermission({mode:'readwrite'})).then(function(value){ if(value!=='granted') throw Error('write permission not granted'); });
+        })
         .then(function(){ return h.createWritable(); })
         .then(function(w){ return Promise.resolve(w.write(bytes)).then(function(){ return w.close(); }); })
         .then(function(){ logmsg('saved to '+(h.name||path.replace(/^.*\//,''))); })
-        .catch(function(e){ logmsg('save failed: '+e); });
+        .catch(function(e){
+          try{ console.warn('save failed: '+e); }catch(_){}
+          saveFailure('Could not save '+path.replace(/^.*\//,'')+' to the chosen file. A download copy will be offered.');
+          downloadBytes(path,bytes);
+        });
     });
     return true;
   }
@@ -6438,7 +6467,7 @@ window.fcRunPy = fcRunPy;
       for(var path in pendingSaves){
         var st; try{ st=FS.stat(path); }catch(e){ continue; }   // not written yet
         if(!st || !st.size) continue;
-        var sig=st.mtime+':'+st.size, prev=pendingSaves[path];
+        var sig=(downloadExportPath(path)?Number(st.mtime):st.mtime)+':'+st.size, prev=pendingSaves[path];
         if(prev===sig) continue;                                 // unchanged since last download
         // wait one tick for a size-stable file (write finished), then download
         pendingSaves[path]=sig;
