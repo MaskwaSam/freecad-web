@@ -148,7 +148,7 @@
 +        return 8;
 +    if (!platformScreenId)
 +        return 64;
-+    if (reinterpret_cast<quintptr>(screen->handle()) != platformScreenId)
++    if (reinterpret_cast<quintptr>(static_cast<QWasmScreen *>(screen->handle())) != platformScreenId)
 +        return 16;
 +    return context.window->screen() == screen.data() ? 0 : 32;
 +}
